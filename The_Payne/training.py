@@ -30,14 +30,31 @@ from . import radam
 
 #===================================================================================================
 # simple multi-layer perceptron model
-class Payne_model(torch.nn.Module):
+class Payne_model_og(torch.nn.Module):
     def __init__(self, dim_in, num_neurons, num_features, mask_size, num_pixel):
-        super(Payne_model, self).__init__()
+        super(Payne_model_og, self).__init__()
         self.features = torch.nn.Sequential(
             torch.nn.Linear(dim_in, num_neurons),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(num_neurons, num_neurons),
             torch.nn.LeakyReLU(),
+            torch.nn.Linear(num_neurons, num_pixel),
+        )
+
+    def forward(self, x):
+        return self.features(x)
+
+
+#======
+# Kovalev version
+class Payne_model(torch.nn.Module):
+    def __init__(self, dim_in, num_neurons, num_features, mask_size, num_pixel):
+        super(Payne_model, self).__init__()
+        self.features = torch.nn.Sequential(
+            torch.nn.Linear(dim_in, num_neurons),
+            torch.nn.ReLU(),
+            torch.nn.Linear(num_neurons, num_neurons),
+            torch.nn.Sigmoid(),
             torch.nn.Linear(num_neurons, num_pixel),
         )
 
