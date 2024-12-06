@@ -11,7 +11,7 @@ import time
 
 # choose a testing batch
 
-name = "mafs20-g1.npz"
+name = "/mnt/beegfs/gemini/groups/bergemann/users/shared-storage/kovalev/payne/mafs20-g1.npz"
 temp = np.load(name)
 
 wvl = temp["wvl"][::2]
