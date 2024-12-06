@@ -30,9 +30,9 @@ from . import radam
 
 #===================================================================================================
 # simple multi-layer perceptron model
-class Payne_model_og(torch.nn.Module):
+class Payne_model2(torch.nn.Module):
     def __init__(self, dim_in, num_neurons, num_features, mask_size, num_pixel):
-        super(Payne_model_og, self).__init__()
+        super(Payne_model, self).__init__()
         self.features = torch.nn.Sequential(
             torch.nn.Linear(dim_in, num_neurons),
             torch.nn.LeakyReLU(),
@@ -186,7 +186,7 @@ def neural_net(training_labels, training_spectra, validation_labels, validation_
 
 #--------------------------------------------------------------------------------------------
     # assume L1 loss
-    loss_fn = torch.nn.L1Loss(reduction = 'mean')
+    loss_fn = torch.nn.MSELoss(reduction = 'mean')
 
     # make pytorch variables
     x = Variable(torch.from_numpy(x)).type(dtype)
