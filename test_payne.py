@@ -9,7 +9,7 @@ from The_Payne import spectral_model
 from The_Payne import fitting
 from The_Payne import training
 
-matplotlib.use("MacOSX")
+#matplotlib.use("MacOSX")
 
 # Created by storm at 05.12.24
 

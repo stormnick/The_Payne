@@ -40,7 +40,7 @@ def fit_normalized_spectrum_single_star_model(norm_spec, spec_err, NN_coeffs, wa
 
     def fit_func(dummy_variable, *labels):
         norm_spec = spectral_model.get_spectrum_from_neural_net(scaled_labels = labels[:-1],
-            NN_coeffs = NN_coeffs)
+            NN_coeffs = NN_coeffs, kovalev=True)
         norm_spec = utils.doppler_shift(wavelength, norm_spec, labels[-1])
         return norm_spec
 
