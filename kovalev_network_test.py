@@ -226,24 +226,17 @@ def save_model_parameters(file_path, model_numpy, x_min, x_max):
 
 
 if __name__ == "__main__":
-    learning_rate = 0.001
-    patience = 20
-    check_interval = 1000
     hidden_neurons = 300
-    data_file = "/mnt/beegfs/gemini/groups/bergemann/users/shared-storage/kovalev/payne/mafs20-g1.npz"
-    output_file = "test_large1.npz"
-
-    # Load the data
-    x, y, x_valid, y_valid, x_min, x_max, num_pix, dim_in = load_data(data_file)
+    output_file = "/Users/storm/PycharmProjects/payne/test_network/test_large1"
 
     # Build the model
-    model = build_model(dim_in, num_pix, hidden_neurons)
+    model = build_model(8, int(11400 / 2), hidden_neurons)
 
     # Train the model
-    model_numpy = train_model(model, x, y, x_valid, y_valid,
-                              learning_rate=learning_rate,
-                              patience=patience,
-                              check_interval=check_interval)
+    model_numpy = random_network_for_testing(model)
+
+    x_min = np.asarray([ 4. ,1. ,-3.  , 0.5  , 4.00245339, -0.2, -0.2 ,    -0.8       ] )
+    x_max = np.asarray([ 6.999 ,      4.9     ,    0.8    ,     3.    ,     15.99944588 , 0.8,  0.8    ,     0.2       ])
 
     # Save parameters
     if model_numpy is not None:
