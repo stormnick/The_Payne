@@ -230,7 +230,7 @@ if __name__ == "__main__":
     output_file = "/Users/storm/PycharmProjects/payne/test_network/test_large1"
 
     # Build the model
-    model = build_model(8, int(11400 / 2), hidden_neurons)
+    model = build_model(8, int(168900), hidden_neurons)
 
     # Train the model
     model_numpy = random_network_for_testing(model)

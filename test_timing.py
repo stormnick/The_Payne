@@ -44,7 +44,7 @@ scaled_labels = (real_labels-x_min)/(x_max-x_min) - 0.5
 
 # test timing
 # Number of iterations for timing
-num_iterations = 1000
+num_iterations = 100
 
 # Timing the function multiple times
 timings = timeit.repeat(stmt='spectral_model.get_spectrum_from_neural_net(scaled_labels = scaled_labels, NN_coeffs = NN_coeffs, kovalev=True)',
