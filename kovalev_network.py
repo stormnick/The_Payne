@@ -5,9 +5,10 @@ import matplotlib.pyplot as plt
 import time
 import argparse
 import sys
-#import mkl
+import mkl
+import datetime
 
-#mkl.set_num_threads(1)
+mkl.set_num_threads(1)
 
 def load_data(file_path, train_fraction=0.75):
     """
@@ -231,7 +232,8 @@ if __name__ == "__main__":
     check_interval = 1000
     hidden_neurons = 300
     data_file = "/mnt/beegfs/gemini/groups/bergemann/users/shared-storage/kovalev/payne/mafs20-g1.npz"
-    output_file = "test_large1.npz"
+    # today's date
+    output_file = f"payne_ts_nlte_hr10_{datetime.datetime.now().strftime('%Y-%m-%d')}.npz"
 
     # Load the data
     x, y, x_valid, y_valid, x_min, x_max, num_pix, dim_in = load_data(data_file)

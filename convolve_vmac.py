@@ -166,7 +166,11 @@ if __name__ == '__main__':
     files = [f for f in os.listdir(folder_input_path) if f.endswith('.spec')]
     for file in files:
         print(file)
-        wavelength, flux = np.loadtxt(f"{folder_input_path}/{file}", dtype=float, unpack=True, usecols=(0, 1))
+        try:
+            wavelength, flux = np.loadtxt(f"{folder_input_path}/{file}", dtype=float, unpack=True, usecols=(0, 1))
+        except (ValueError, OSError, FileNotFoundError) as e:
+            print(f"Error in {file}: {e}")
+            continue
         # cut to the lmin/lmax
         mask = (lmin - extra_boundary <= wavelength) & (wavelength <= lmax + extra_boundary)
         wavelength = wavelength[mask]
