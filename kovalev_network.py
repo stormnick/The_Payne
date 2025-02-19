@@ -44,7 +44,7 @@ def load_data(file_path, train_fraction=0.75):
     temp = np.load(file_path)
     #wvl = temp["wvl"][::2]
     lbl = temp["labels"]
-    flx = temp["flxn"][::2]
+    flx = temp["flxn"]
 
     # Example condition to filter data:
     new = lbl[0] > 0
@@ -142,7 +142,7 @@ def train_model(model, x, y, x_valid, y_valid,
     current_loss = np.inf
     count = 0
     t = 0
-    start_time = time.time()
+    start_time = time.perf_counter()
     model_numpy = None
 
     while count < patience:
@@ -155,7 +155,7 @@ def train_model(model, x, y, x_valid, y_valid,
                 y_pred_valid = model(x_valid)
                 loss_valid = ((y_pred_valid - y_valid).pow(2)).mean()
 
-            print(f"Iter: {t}, Patience Count: {count}, Valid Loss: {loss_valid}, Elapsed: {time.time() - start_time:.2f}s")
+            print(f"Iter: {t}, Patience Count: {count}, Valid Loss: {loss_valid}, Elapsed: {(time.perf_counter() - start_time) / 60 / 60:.2f}hrs")
 
             if loss_valid > current_loss:
                 count += 1
@@ -170,7 +170,7 @@ def train_model(model, x, y, x_valid, y_valid,
         optimizer.step()
         t += 1
 
-    print(f"Training finished in {time.time() - start_time:.2f}s with final validation loss: {current_loss}")
+    print(f"Training finished in {(time.perf_counter() - start_time) / 60 / 60:.2f}hrs with final validation loss: {current_loss}")
     return model_numpy
 
 def random_network_for_testing(model):
@@ -231,10 +231,13 @@ if __name__ == "__main__":
     patience = 20
     check_interval = 1000
     hidden_neurons = 300
-    data_file = "/mnt/beegfs/gemini/groups/bergemann/users/shared-storage/kovalev/payne/mafs20-g1.npz"
-    # today's date
-    output_file = f"payne_ts_nlte_hr10_{datetime.datetime.now().strftime('%Y-%m-%d')}.npz"
 
+    data_file = "/mnt/beegfs/gemini/groups/bergemann/users/storm/payne/nov2024/28jan2025_grid_nlte_batch012345_alt_hr10_novmac_80k_res_morelabels_feb2025.npz"
+    #data_file = "/mnt/beegfs/gemini/groups/bergemann/users/shared-storage/kovalev/payne/mafs20-g1.npz"
+    # today's date
+    output_file = f"payne_ts_nlte_hr10_{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.npz"
+
+    print(f"Training network with {hidden_neurons} hidden neurons, learning rate {learning_rate} and patience {patience}.")
     # Load the data
     x, y, x_valid, y_valid, x_min, x_max, num_pix, dim_in = load_data(data_file)
 
@@ -250,6 +253,6 @@ if __name__ == "__main__":
     # Save parameters
     if model_numpy is not None:
         save_model_parameters(output_file, model_numpy, x_min, x_max)
-        print(f"Model parameters saved to {output_file}.npz")
+        print(f"Model parameters saved to {output_file}")
     else:
         print("No best model found, no file saved.")
