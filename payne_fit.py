@@ -17,13 +17,6 @@ matplotlib.use("MacOSX")
 
 # Created by storm at 03.03.25
 
-def payne_fit():
-    real_labels = [5.777, 4.44, 0.0, 1.0, 0., 0., 0., 0, 0]
-
-    scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
-    spec_payne = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
-                                                                  NN_coeffs=payne_coeffs, kovalev=True)
-
 
 def load_payne(path_model):
     tmp = np.load(path_model)
@@ -48,6 +41,7 @@ def load_payne(path_model):
                     x_min, x_max)
     return payne_coeffs, wavelength, labels
 
+
 def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, resolution_val=None):
     def model_spectrum_for_curve_fit(wavelength_obs, *params_to_fit):
         real_labels = np.array(params_to_fit[:-3])
@@ -62,14 +56,17 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, resolution
             kovalev_alt=True
         )
 
-        if resolution_val is not None:
-            _, spec_payne = conv_res(wavelength_payne, spec_payne, resolution_val)
+        wavelength_payne_ = wavelength_payne
 
-        # _, spec_payne = conv_rotation(wavelength_payne, spec_payne, vrot)
-        # _, spec_payne = conv_macroturbulence(wavelength_payne, spec_payne, vmac)
+        if resolution_val is not None:
+            wavelength_payne_, spec_payne = conv_res(wavelength_payne_, spec_payne, resolution_val)
+        #if vrot > 0:
+            #wavelength_payne_, spec_payne = conv_rotation(wavelength_payne_, spec_payne, vrot)
+        if vmac > 0:
+            wavelength_payne_, spec_payne = conv_macroturbulence(wavelength_payne_, spec_payne, vmac)
 
         f_interp = interp1d(
-            wavelength_payne,
+            wavelength_payne_,
             spec_payne,
             kind='linear',
             bounds_error=False,
@@ -87,7 +84,6 @@ if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_alt_smallerldelta_ts_nlte_lesselements_hr10_2025-02-27-08-43-08.npz"
     payne_coeffs, wavelength_payne, labels = load_payne(path_model)
 
-
     real_labels = [5.777, 4.44, 0.0, 1.0, 0., 0., 0., 0, 0]
     scaled_labels = (
         (np.array(real_labels) - payne_coeffs[-2]) /
@@ -100,42 +96,28 @@ if __name__ == '__main__':
         kovalev_alt=True
     )
 
-    wavelength    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_alt_smallerldelta_ts_nlte_lesselements_hr10_2025-02-27-08-43-08.npz"
-    payne_coeffs, wavelength_payne, labels = load_payne(path_model)
+    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
+    wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G48-29", dtype=float, unpack=True)
+    resolution_val = 20_000
 
+    l_cut = (wavelength_obs > wavelength_payne[0]) & (wavelength_obs < wavelength_payne[-1])
+    wavelength_obs = wavelength_obs[l_cut]
+    flux_obs = flux_obs[l_cut]
 
-    real_labels = [5.777, 4.44, 0.0, 1.0, 0., 0., 0., 0, 0]
-    scaled_labels = (
-        (np.array(real_labels) - payne_coeffs[-2]) /
-        (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
-    )
-    wavelength_obs = wavelength_payne
-    flux_obs = spectral_model.get_spectrum_from_neural_net(
-        scaled_labels=scaled_labels,
-        NN_coeffs=payne_coeffs,
-        kovalev_alt=True
-    )
-
-    wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
-
-    l_cut = (sun_wavelength > lmin) & (sun_wavelength < lmax)
-    sun_wavelength = sun_wavelength[l_cut]
-    sun_flux = sun_flux[l_cut]
-
-    p0 = [4.777, 2.44, -2.0, 1.5, 0., 0., 0., 0, 0, 0, 0, 0]
+    p0 = [4.777, 4.44, -2.0, 1.5, -1., -1., -1., -1, -1, 1, 1, 1]
 
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
         wavelength_payne,
-        resolution_val=None
+        resolution_val=resolution_val
     )
-
 
     popt, pcov = curve_fit(
         model_func,
         wavelength_obs,
         flux_obs,
-        p0=p0
+        p0=p0,
+        bounds=([3.5, 0, -4, 0.5, -3, -3, -3, -3, -3, 0, 0, -10], [8, 5, 0.5, 3, 3, 3, 3, 3, 3, 15, 15, 10])
     )
 
     print(popt)
@@ -147,53 +129,25 @@ if __name__ == '__main__':
             print(f"{label:<15}: {value:>10.3f}")
         else:
             print(f"{label:<15}: {value*1000:>10.3f}")
-    # compare with real labels
-    print(np.array(real_labels) - popt[:-3])
 
+    doppler_shift = popt[-1]
+    vmac = popt[-2]
+    vrot = popt[-3]
 
-    #real_labels = [5.777, 4.44, 0.0, 1.0, 0., 0., 0., 0, 0]
-    #scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
-    #real_spec_4most = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
-    #                                                              NN_coeffs=payne_coeffs, kovalev_alt=True)
-    #plt.plot(wavelength_payne, real_spec_4most)
-    #plt.show()_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
+    real_labels = popt[:-3]
+    scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
+    payne_fitted_spectra = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
+                                                                  NN_coeffs=payne_coeffs, kovalev_alt=True)
 
-    l_cut = (sun_wavelength > lmin) & (sun_wavelength < lmax)
-    sun_wavelength = sun_wavelength[l_cut]
-    sun_flux = sun_flux[l_cut]
+    wavelength_payne_plot = wavelength_payne
+    if resolution_val is not None:
+        wavelength_payne_plot, payne_fitted_spectra = conv_res(wavelength_payne_plot, payne_fitted_spectra, resolution_val)
+    # if vrot > 0:
+    # wavelength_payne_plot, payne_fitted_spectra = conv_rotation(wavelength_payne_plot, payne_fitted_spectra, vrot)
+    if vmac > 0:
+        wavelength_payne_plot, payne_fitted_spectra = conv_macroturbulence(wavelength_payne_plot, payne_fitted_spectra, vmac)
 
-    p0 = [4.777, 2.44, -2.0, 1.5, 0., 0., 0., 0, 0, 0, 0, 0]
-
-    model_func = make_model_spectrum_for_curve_fit(
-        payne_coeffs,
-        wavelength_payne,
-        resolution_val=None
-    )
-
-
-    popt, pcov = curve_fit(
-        model_func,
-        wavelength_obs,
-        flux_obs,
-        p0=p0
-    )
-
-    print(popt)
-    labels.append('vrot')
-    labels.append('vmac')
-    labels.append('doppler_shift')
-    for label, value in zip(labels, popt):
-        if label != 'teff':
-            print(f"{label:<15}: {value:>10.3f}")
-        else:
-            print(f"{label:<15}: {value*1000:>10.3f}")
-    # compare with real labels
-    print(np.array(real_labels) - popt[:-3])
-
-
-    #real_labels = [5.777, 4.44, 0.0, 1.0, 0., 0., 0., 0, 0]
-    #scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
-    #real_spec_4most = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
-    #                                                              NN_coeffs=payne_coeffs, kovalev_alt=True)
-    #plt.plot(wavelength_payne, real_spec_4most)
-    #plt.show()
+    plt.figure(figsize=(18, 6))
+    plt.scatter(wavelength_obs / (1 + (doppler_shift / 299792.)), flux_obs, label="Observed", s=3, color='k')
+    plt.plot(wavelength_payne_plot, payne_fitted_spectra, label="Payne", color='r')
+    plt.show()
