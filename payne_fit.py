@@ -28,7 +28,7 @@ def load_payne(path_model):
     x_max = tmp["x_max"]
     try:
         wavelength = tmp["wavelength"]
-        labels = tmp["label_names"]
+        labels = list(tmp["label_names"])
     except KeyError:
         lmin, lmax = 5330, 5615
         wavelength = np.linspace(lmin, lmax + 0.001, 28501)
@@ -80,46 +80,78 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, resolution
         #plt.show()
 
         # calculate chi-squared
-        #chi_squared = np.sum((interpolated_spectrum - flux_obs) ** 2)
+        chi_squared = np.sum((interpolated_spectrum - flux_obs) ** 2)
         #print(chi_squared)
 
         return interpolated_spectrum
 
     return model_spectrum_for_curve_fit
 
+def scale_back(x, x_min, x_max, label_name=None):
+    x = np.array(x)
+    x_min = np.array(x_min)
+    x_max = np.array(x_max)
+    return_value = (x + 0.5) * (x_max - x_min) + x_min
+    if label_name == "teff":
+        return_value = return_value * 1000
+    return list(return_value)
 
 if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_alt_smallerldelta_ts_nlte_lesselements_hr10_2025-02-27-08-43-08.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr3_2025-03-04-01-03-54.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr10_2025-03-05-01-50-15.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr13_2025-03-04-03-09-20.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr15n_2025-03-04-19-35-44.npz"
     payne_coeffs, wavelength_payne, labels = load_payne(path_model)
+    x_min = list(payne_coeffs[-2])
+    x_max = list(payne_coeffs[-1])
 
     resolution_val = None
 
-    real_labels = [5.777, 4.44, 0.0, 1.0, 0., 0., 0., 0, 0]
-    scaled_labels = (
-        (np.array(real_labels) - payne_coeffs[-2]) /
-        (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
-    )
-    wavelength_obs = wavelength_payne
-    flux_obs = spectral_model.get_spectrum_from_neural_net(
-        scaled_labels=scaled_labels,
-        NN_coeffs=payne_coeffs,
-        kovalev_alt=True
-    )
+    #real_labels = [5.900, 4.44, 0.0, 1.0, 0., 0., 0., 0]
+    #real_labels = [ 7.7911,  4.427,  -0.032,   1.291,   0.499,  -0.104,   0.392,  -0.996 ]
+    #scaled_labels = (
+    #    (np.array(real_labels) - payne_coeffs[-2]) /
+    #    (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
+    #)
+    #wavelength_test = wavelength_payne
+    #flux_test = spectral_model.get_spectrum_from_neural_net(
+    #    scaled_labels=scaled_labels,
+    #    NN_coeffs=payne_coeffs,
+    #    kovalev_alt=True
+    #)
+
+    #plt.plot(wavelength_test, flux_test)
+    #plt.show()
+
+    #wavelength_test, flux_test = conv_macroturbulence(wavelength_test, flux_test, 3)
 
     wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
     wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/sun_nlte.spec", dtype=float, unpack=True, usecols=(0, 1))
     wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G48-29", dtype=float, unpack=True)
-    data = np.loadtxt("18Sco_corrected.txt", dtype=float, unpack=True)
+    data = np.loadtxt("18Sco_cont_norm.txt", dtype=float, unpack=True)
     wavelength_obs, flux_obs = data[:, 0], data[:, 1]
-    resolution_val = None
+    wavelength_obs, flux_obs = np.loadtxt("ADP_18sco_snr396_HARPS_17.707g_2.norm", dtype=float, unpack=True, usecols=(0, 2), skiprows=1)
+
+    mask = (flux_obs > 0.0) & (flux_obs < 1.2)
+    wavelength_obs = wavelength_obs[mask]
+    flux_obs = flux_obs[mask]
+
+    resolution_val = 120_000
 
     l_cut = (wavelength_obs > wavelength_payne[0]) & (wavelength_obs < wavelength_payne[-1])
     wavelength_obs = wavelength_obs[l_cut]
     flux_obs = flux_obs[l_cut]
 
-    p0 = [7.777, 2.44, -3.0, 1.5, -2., -2., -2., -2, -2, 0, 8, 0]
+    #p0 = [7.777, 2.94, 0.0, 1.5, -2., -2., -2., -2, 0, 3, 0]
+    p0 = [5.777, 4.0, 0.0, 1.0] + (len(labels) - 4) * [0] + [0, 3, 0]
 
-    def_bounds = ([3.5, 0, -4, 0.5, -3, -3, -3, -3, -3, 0, 0, -20], [8, 5, 0.5, 3, 3, 3, 3, 3, 3, 15, 15, 20])
+    #p0 = scale_back([0] * (len(p0) - 3), payne_coeffs[-2], payne_coeffs[-1], label_name=None)
+    # add extra 3 0s
+    #p0 += [0, 0, 0]
+
+    #def_bounds = ([3.5, 0, -4, 0.5, -3, -3, -3, -3, 0, 0, -20], [8, 5, 0.5, 3, 3, 3, 3, 3, 1e-5, 15, 20])
+    def_bounds = (x_min + [0, 0, -20], x_max + [1e-5, 15, 20])
 
     input_values = [None] * len(p0)
     #input_values = (6.394, 4.4297, -2.8919, 1.4783, None, None, None, None, None, 3.7822, 0, 0)
@@ -139,6 +171,8 @@ if __name__ == '__main__':
         resolution_val=resolution_val
     )
 
+    print("Fitting...")
+
     popt, pcov = curve_fit(
         model_func,
         wavelength_obs,
@@ -146,6 +180,8 @@ if __name__ == '__main__':
         p0=p0,
         bounds=def_bounds,
     )
+
+    print("Done fitting.")
 
     #print(popt)
     labels.append('vrot')
@@ -179,6 +215,7 @@ if __name__ == '__main__':
     plt.figure(figsize=(18, 6))
     plt.scatter(wavelength_obs, flux_obs, label="Observed", s=3, color='k')
     plt.plot(wavelength_payne_plot * (1 + (doppler_shift / 299792.)), payne_fitted_spectra, label="Payne", color='r')
+    #plt.plot(wavelength_test * (1 + (doppler_shift / 299792.)), flux_test, label="Payne test", color='b')
     plt.ylim(0.0, 1.05)
     plt.xlim(wavelength_payne_plot[0], wavelength_payne_plot[-1])
     plt.show()
