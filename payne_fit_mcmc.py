@@ -47,7 +47,8 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
         j = 0
         for i, input_value in enumerate(input_values):
             if input_value is None:
-                spectra_params[i] = params_to_fit[j]
+                #print(spectra_params[0], params_to_fit[0])
+                spectra_params[i] = params_to_fit[0][j]
                 j += 1
 
         vrot = spectra_params[-3]
@@ -89,8 +90,8 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
         #plt.show()
 
         # calculate chi-squared
-        chi_squared = np.sum((interpolated_spectrum - flux_obs) ** 2)
-        print(chi_squared)
+        #chi_squared = np.sum((interpolated_spectrum - flux_obs) ** 2)
+        #print(chi_squared)
 
         return interpolated_spectrum
 
@@ -105,6 +106,33 @@ def scale_back(x, x_min, x_max, label_name=None):
         return_value = return_value * 1000
     return list(return_value)
 
+# 2. Priors
+def log_prior(params):
+    for param, param_min, param_max in zip(params, def_bounds[0], def_bounds[1]):
+        if not (param_min < param < param_max):
+            return -np.inf
+    return 0.0
+
+
+# 3. Likelihood
+def log_likelihood(params, wavelength, flux, flux_err):
+    model = model_func(wavelength, params)
+    residual = flux - model
+
+    if flux_err is not None:
+        loglike = -0.5 * np.sum((residual / flux_err) ** 2 + np.log(2 * np.pi * flux_err ** 2))
+    else:
+        loglike = -0.5 * np.sum((residual) ** 2)
+    return loglike
+
+
+# 4. Posterior
+def log_posterior(params, wavelength, flux, flux_err):
+    lp = log_prior(params)
+    if not np.isfinite(lp):
+        return -np.inf
+    return lp + log_likelihood(params, wavelength, flux, flux_err)
+
 if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_alt_smallerldelta_ts_nlte_lesselements_hr10_2025-02-27-08-43-08.npz"
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr3_2025-03-10-10-19-24.npz"
@@ -117,14 +145,14 @@ if __name__ == '__main__':
 
     wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
     wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/iag_solar_flux.txt", dtype=float, unpack=True)
-    #wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/sun_nlte.spec", dtype=float, unpack=True, usecols=(0, 1))
+    wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/sun_nlte.spec", dtype=float, unpack=True, usecols=(0, 1))
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G48-29", dtype=float, unpack=True)
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G64-12", dtype=float, unpack=True)
     #data = np.loadtxt("18Sco_cont_norm.txt", dtype=float, unpack=True)
     #wavelength_obs, flux_obs = data[:, 0], data[:, 1]
     #wavelength_obs, flux_obs = np.loadtxt("ADP_18sco_snr396_HARPS_17.707g_2.norm", dtype=float, unpack=True, usecols=(0, 2), skiprows=1)
     #wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/synthetic_data_sun_nlte_full.txt", dtype=float, unpack=True, usecols=(0, 1))
-    wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/diff_stellar_spectra_MB/HARPS_HD122563.txt", dtype=float, unpack=True, usecols=(0, 1))
+    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/diff_stellar_spectra_MB/HARPS_HD122563.txt", dtype=float, unpack=True, usecols=(0, 1))
 
     mask = (flux_obs > 0.0) & (flux_obs < 1.2)
     wavelength_obs = wavelength_obs[mask]
@@ -145,9 +173,9 @@ if __name__ == '__main__':
     #p0 = [6.777, 4.54, 0.0, 1.0] + (len(labels) - 4) * [0] + [0, 0, 0]
     p0 = [5.777, 4.44, 0.0, 1.0] + (len(labels) - 4) * [0]
 
-    p0 = scale_back([0] * (len(labels)), payne_coeffs[-2], payne_coeffs[-1], label_name=None)
+    #p0 = scale_back([0] * (len(labels)), payne_coeffs[-2], payne_coeffs[-1], label_name=None)
     # add extra 3 0s
-    p0 += [3, 3, 0]
+    p0 += [0, 3.8, 0]
 
     #def_bounds = ([3.5, 0, -4, 0.5, -3, -3, -3, -3, 0, 0, -20], [8, 5, 0.5, 3, 3, 3, 3, 3, 1e-5, 15, 20])
     def_bounds = (x_min + [0, 0, -10 + p0[-1]], x_max + [15, 15, 10 + p0[-1]])
@@ -157,8 +185,8 @@ if __name__ == '__main__':
     #input_values = (4287.7906, 4.5535, -0.5972, 0.6142, None, None, None, None, None, 5.399, 0, 0)
     #input_values = (6290.449, 4.6668, -3.7677, 1.1195, None, None, None, None, None, 1.2229, 0, 0)
     #input_values[0:3] = (5777, 4.44)
-    input_values[-3:] = (0, None, None)
-    input_values = (None, None, None, None, 0, 0, 0, 0, 0, None, None)
+    #input_values[-3:] = (0, None, None)
+    #input_values = (None, None, None, None, 0, 0, 0, 0, 0, None, None)
     columns_to_pop = []
     for i, input_value in enumerate(input_values):
         if input_value is not None:
@@ -187,43 +215,20 @@ if __name__ == '__main__':
             labels_to_fit[i] = False
 
 
-    # 2. Priors
-    def log_prior(params):
-        a, b, c = params
-        (a_min, b_min, c_min), (a_max, b_max, c_max) = def_bounds
-        if not (a_min < a < a_max):
-            return -np.inf
-        if not (b_min < b < b_max):
-            return -np.inf
-        if not (c_min < c < c_max):
-            return -np.inf
-        return 0.0
-
-
-    # 3. Likelihood
-    def log_likelihood(params, wavelength, flux, flux_err):
-        model = model_func(params, wavelength)
-        residual = flux - model
-
-        if flux_err is not None:
-            loglike = -0.5 * np.sum((residual / flux_err) ** 2 + np.log(2 * np.pi * flux_err ** 2))
-        else:
-            loglike = -0.5 * np.sum((residual) ** 2)
-        return loglike
-
-
-    # 4. Posterior
-    def log_posterior(params, wavelength, flux, flux_err):
-        lp = log_prior(params)
-        if not np.isfinite(lp):
-            return -np.inf
-        return lp + log_likelihood(params, wavelength, flux, flux_err)
+    model_func = make_model_spectrum_for_curve_fit(
+        payne_coeffs,
+        wavelength_payne,
+        input_values,
+        resolution_val=resolution_val
+    )
 
 
     # 5. Set up the sampler
     ndim = len(p0)
     nwalkers = 32
     pos = p0 + 1e-4 * np.random.randn(nwalkers, ndim)
+
+    flux_err = np.ones_like(flux_obs) * 0.01
 
     sampler = emcee.EnsembleSampler(
         nwalkers,
@@ -239,9 +244,13 @@ if __name__ == '__main__':
     # 7. Get samples (discard burn-in, thin to reduce autocorrelation)
     samples = sampler.get_chain(discard=1000, thin=10, flat=True)
 
+    labels.append('vrot')
+    labels.append('vmac')
+    labels.append('doppler_shift')
+
     # 8. Corner plot
-    labels = [r"$a$", r"$b$", r"$c$"]
     fig = corner.corner(samples, labels=labels, truths=p0)
+    plt.savefig("corner_plot.png", dpi=300)
     plt.show()
 
     # 9. Estimate best-fit and uncertainties
@@ -256,12 +265,9 @@ if __name__ == '__main__':
     for i, (med, m_err, p_err) in enumerate(mcmc_results):
         print(f"Parameter {labels[i]} = {med:.3f} (+{p_err:.3f}/-{m_err:.3f})")
 
-    model_func = make_model_spectrum_for_curve_fit(
-        payne_coeffs,
-        wavelength_payne,
-        input_values,
-        resolution_val=resolution_val
-    )
+    exit()
+
+
 
     print("Fitting...")
 
