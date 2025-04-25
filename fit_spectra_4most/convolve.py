@@ -36,6 +36,37 @@ def _hashable(arr: np.ndarray) -> int:
 
 _kernel_fft_cache: dict[tuple[int, int], np.ndarray] = {}
 
+
+def conv_profile(xx: np.ndarray,
+                 yy: np.ndarray,
+                 px: np.ndarray,
+                 py: np.ndarray):
+    """
+    Convolve `yy` (defined on `xx`) with kernel `py` on grid `px`,
+    using caching to avoid recomputing the kernel FFT.
+    """
+    n   = xx.size
+    dxn = (xx[-1] - xx[0]) / (n - 1)
+
+    key = (n, _hashable(py))           # (signal length, kernel fingerprint)
+    kernel_fft = _kernel_fft_cache.get(key)
+    if kernel_fft is None:
+        norm       = np.trapz(py, x=px)
+        rolled_ker = np.roll(py / norm, n // 2)
+        kernel_fft = fft(rolled_ker)
+        _kernel_fft_cache[key] = kernel_fft
+
+    conv = dxn * ifft(fft(yy) * kernel_fft)
+    return xx, np.real(conv)
+
+def conv_profile2(xx, yy, px, py):
+    norm = np.trapezoid(py, x=px)
+    n = len(xx)
+    dxn = (xx[-1] - xx[0]) / (n - 1)
+    conv = dxn * ifft(fft(yy) * fft(np.roll(py / norm, int(n / 2))))
+    return xx, np.real(conv)
+
+
 def conv_res(wavelength, flux, resolution):
     """
     Applies convolutions to data sx, sy. Uses gaussian doppler broadedning.
@@ -69,36 +100,6 @@ def conv_res(wavelength, flux, resolution):
     yy = syn
 
     return xx, yy
-
-
-def conv_profile(xx: np.ndarray,
-                 yy: np.ndarray,
-                 px: np.ndarray,
-                 py: np.ndarray):
-    """
-    Convolve `yy` (defined on `xx`) with kernel `py` on grid `px`,
-    using caching to avoid recomputing the kernel FFT.
-    """
-    n   = xx.size
-    dxn = (xx[-1] - xx[0]) / (n - 1)
-
-    key = (n, _hashable(py))           # (signal length, kernel fingerprint)
-    kernel_fft = _kernel_fft_cache.get(key)
-    if kernel_fft is None:
-        norm       = np.trapz(py, x=px)
-        rolled_ker = np.roll(py / norm, n // 2)
-        kernel_fft = fft(rolled_ker)
-        _kernel_fft_cache[key] = kernel_fft
-
-    conv = dxn * ifft(fft(yy) * kernel_fft)
-    return xx, np.real(conv)
-
-def conv_profile2(xx, yy, px, py):
-    norm = np.trapezoid(py, x=px)
-    n = len(xx)
-    dxn = (xx[-1] - xx[0]) / (n - 1)
-    conv = dxn * ifft(fft(yy) * fft(np.roll(py / norm, int(n / 2))))
-    return xx, np.real(conv)
 
 
 
