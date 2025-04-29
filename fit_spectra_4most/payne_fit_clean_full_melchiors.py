@@ -131,6 +131,7 @@ if __name__ == '__main__':
 
         # Concatenate to the bottom:
         fitted_values = pd.concat([fitted_values, new_row_df], ignore_index=True)
+        fitted_values.to_csv("fitted_values_melchiors_v2.csv", index=False)
 
     fitted_values = fitted_values.round(5)
     fitted_values.to_csv("fitted_values_melchiors_v2.csv", index=False)

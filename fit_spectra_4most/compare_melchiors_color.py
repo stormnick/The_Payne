@@ -24,27 +24,56 @@ if __name__ == '__main__':
 
     print(merged_data.columns)
 
-    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
 
-    ax[0].plot([4000, 8000], [4000, 8000], "r--")
-    ax[0].scatter(merged_data["Teff"], merged_data["teff"] * 1000, color='k', label="Teff", s=14)
-    ax[0].errorbar(merged_data["Teff"], merged_data["teff"] * 1000, markersize=0, xerr=merged_data["e_Teff"], linestyle="None", color='k', capsize=3)
-    ax[0].set_xlabel("Teff (Soubiran)")
-    ax[0].set_ylabel("Teff (Payne)")
-    ax[0].set_title("Teff")
+    # -----------------------------------------------------------
+    # 1. common colour map
+    # -----------------------------------------------------------
+    cvals = merged_data["[Fe/H]"] - merged_data["feh"]  # value we colour by
+    cmap = plt.cm.coolwarm
+    norm = plt.Normalize(cvals.min(), cvals.max())
+    colours = cmap(norm(cvals))  # RGBA for every star
 
-    ax[1].plot([0, 5], [0, 5], "r--")
-    ax[1].scatter(merged_data["logg_x"], merged_data["logg_y"], color='k', label="logg", s=14)
-    ax[1].errorbar(merged_data["logg_x"], merged_data["logg_y"], markersize=0, xerr=merged_data["e_logg"], linestyle="None", color='k', capsize=3)
-    ax[1].set_xlabel("logg (Soubiran)")
-    ax[1].set_ylabel("logg (Payne)")
-    ax[1].set_title("logg")
+    # -----------------------------------------------------------
+    # 2. helper list to drive the three panels
+    # -----------------------------------------------------------
+    panels = [
+        #  x                      y                     x-err                1:1 line        title
+        (merged_data["Teff"], merged_data["teff"] * 1000, merged_data["e_Teff"],
+         ([4000, 8000], [4000, 8000]), "Teff"),
 
-    ax[2].plot([-3, 0.5], [-3, 0.5], "r--")
-    ax[2].scatter(merged_data["[Fe/H]"], merged_data["feh"], color='k', label="feh", s=14)
-    ax[2].errorbar(merged_data["[Fe/H]"], merged_data["feh"], markersize=0, xerr=merged_data["e_[Fe/H]"], linestyle="None", color='k', capsize=3)
-    ax[2].set_xlabel("[Fe/H] (Soubiran)")
-    ax[2].set_ylabel("[Fe/H] (Payne)")
-    ax[2].set_title("[Fe/H]")
-    plt.savefig("compare_melchiors_melchiors.png")
+        (merged_data["logg_x"], merged_data["logg_y"], merged_data["e_logg"],
+         ([0, 5], [0, 5]), "log g"),
+
+        (merged_data["[Fe/H]"], merged_data["feh"], merged_data["e_[Fe/H]"],
+         ([-3, 0.5], [-3, 0.5]), "[Fe/H]"),
+    ]
+
+    # -----------------------------------------------------------
+    # 3. plot each panel
+    # -----------------------------------------------------------
+    for i, (x, y, xerr, (ref_x, ref_y), title) in enumerate(panels):
+        ax[i].plot(ref_x, ref_y, "r--")  # identity line
+        sc = ax[i].scatter(x, y, c=cvals, cmap=cmap, norm=norm, s=14)  # points
+
+        # draw coloured error bars one‐by‐one
+        for xi, yi, xe, ci in zip(x, y, xerr, colours):
+            ax[i].errorbar([xi], [yi], xerr=[xe], fmt="none",
+                           ecolor=ci, capsize=3, linewidth=0.8)
+
+        ax[i].set_xlabel(f"{title} (Soubiran)")
+        ax[i].set_ylabel(f"{title} (Payne)")
+        ax[i].set_title(title)
+
+    # -----------------------------------------------------------
+    # 4. single colour-bar on the right
+    # -----------------------------------------------------------
+    fig.colorbar(
+        plt.cm.ScalarMappable(norm=norm, cmap=cmap),
+        ax=ax.ravel().tolist(),
+        location="right",
+        label=r"$\Delta\mathrm{[Fe/H]}\;(\mathrm{Soubiran}-\mathrm{Payne})$"
+    )
+
     plt.show()
+

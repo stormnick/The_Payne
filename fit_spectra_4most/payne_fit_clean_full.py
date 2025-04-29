@@ -17,7 +17,7 @@ matplotlib.use("MacOSX")
 
 # Created by storm at 03.03.25
 
-def process_spectra(wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5):
+def process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5):
     mask = (flux_obs > 0.0) & (flux_obs < 1.2)
     wavelength_obs = wavelength_obs[mask]
     flux_obs = flux_obs[mask]
@@ -212,7 +212,7 @@ def scale_back(x, x_min, x_max, label_name=None):
     return list(return_value)
 
 
-def get_bounds_and_p0(p0, input_values, def_bounds):
+def get_bounds_and_p0(p0, input_values, def_bounds, labels):
     columns_to_pop = []
     for i, input_value in enumerate(input_values):
         if input_value is not None:
@@ -282,7 +282,7 @@ def fit_teff(labels, payne_coeffs, x_min, x_max, stellar_rv, h_line_cores, wavel
     teff_lines_to_use = h_line_cores
     p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
     input_values = [None, None, None, 99] + [0] * (len(labels) - 4) + [None, 0, None]
-    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds)
+    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
         wavelength_obs, flux_obs, wavelength_payne, teff_lines_to_use, stellar_rv, obs_cut_aa=15, payne_cut_aa=20)
     model_func = make_model_spectrum_for_curve_fit(
@@ -324,7 +324,7 @@ def fit_logg(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, w
     # set mg and ca to 0
     input_values[mg_index] = None
     input_values[ca_index] = None
-    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds)
+    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
         wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=5, payne_cut_aa=6)
     model_func = make_model_spectrum_for_curve_fit(
@@ -369,7 +369,7 @@ def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wa
     input_values = [final_parameters["teff"], final_parameters["logg"], None, None] + [0] * (
                 len(labels) - 4) + [vsini_value, vmac_value, final_parameters["doppler_shift"]]
 
-    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds)
+    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
 
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
         wavelength_obs, flux_obs, wavelength_payne, fe_lines, stellar_rv, obs_cut_aa=0.5, payne_cut_aa=0.75)
@@ -392,6 +392,7 @@ def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wa
         flux_obs_cut_to_lines,
         p0=p0,
         bounds=def_bounds,
+        max_nfev=10e5
     )
 
     if fit_vsini and fit_vmac:
@@ -450,7 +451,7 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
     index_element = labels.index(element_to_fit)
     input_values[index_element] = None
 
-    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds)
+    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
 
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
         wavelength_obs, flux_obs, wavelength_payne, element_lines, stellar_rv, obs_cut_aa=dlam, payne_cut_aa=dlam * 1.5)
@@ -467,13 +468,17 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
         print("Fitting...")
         time_start = time.perf_counter()
 
-    popt, pcov = curve_fit(
-        model_func,
-        wavelength_obs_cut_to_lines,
-        flux_obs_cut_to_lines,
-        p0=p0,
-        bounds=def_bounds,
-    )
+    try:
+        popt, pcov = curve_fit(
+            model_func,
+            wavelength_obs_cut_to_lines,
+            flux_obs_cut_to_lines,
+            p0=p0,
+            bounds=def_bounds,
+        )
+    except ValueError:
+        print(f"Fitting failed for element {element_to_fit}")
+        return -99, -1
 
     if not silent:
         print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
@@ -542,7 +547,7 @@ doppler_shift  :      0.327 +/-      0.008"""
     h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
     h_line_cores = list(h_line_cores['ll'])
 
-    wavelength_obs, flux_obs = process_spectra(wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5)
+    wavelength_obs, flux_obs = process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5)
 
     final_parameters = {}
     final_parameters_std = {}
