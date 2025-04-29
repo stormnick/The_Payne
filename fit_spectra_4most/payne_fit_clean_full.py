@@ -17,6 +17,23 @@ matplotlib.use("MacOSX")
 
 # Created by storm at 03.03.25
 
+def process_spectra(wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5):
+    mask = (flux_obs > 0.0) & (flux_obs < 1.2)
+    wavelength_obs = wavelength_obs[mask]
+    flux_obs = flux_obs[mask]
+
+    h_line_core_mask_dlam = 0.5
+
+    mask = np.all(np.abs(wavelength_obs[:, None] - h_line_cores) > h_line_core_mask_dlam, axis=1)
+
+    wavelength_obs = wavelength_obs[mask]
+    flux_obs = flux_obs[mask]
+
+    l_cut = (wavelength_obs > wavelength_payne[0]) & (wavelength_obs < wavelength_payne[-1])
+    wavelength_obs = wavelength_obs[l_cut]
+    flux_obs = flux_obs[l_cut]
+    return wavelength_obs, flux_obs
+
 def calculate_vturb(teff: float, logg: float, met: float) -> float:
     """
     Calculates micro turbulence based on the input parameters
@@ -218,7 +235,7 @@ def get_bounds_and_p0(p0, input_values, def_bounds):
     return p0, columns_to_pop, labels_to_fit, def_bounds
 
 
-def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, fe_lines_to_use, obs_cut_aa=0.5, payne_cut_aa=0.75):
+def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, fe_lines_to_use, stellar_rv, obs_cut_aa=0.5, payne_cut_aa=0.75):
     # cut so that we only take the lines we want
     masks = []
     masks_payne = []
@@ -228,8 +245,10 @@ def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, fe_lines_to_us
     if type(payne_cut_aa) is not list:
         payne_cut_aa = [payne_cut_aa] * len(fe_lines_to_use)
 
+    wavelength_obs_rv_corrected = wavelength_obs / (1 + (stellar_rv / 299792.))
+
     for line, obs_cut_aa_one, payne_cut_aa_one in zip(fe_lines_to_use, obs_cut_aa, payne_cut_aa):
-        mask_one = (wavelength_obs > line - obs_cut_aa_one) & (wavelength_obs < line + obs_cut_aa_one)
+        mask_one = (wavelength_obs_rv_corrected > line - obs_cut_aa_one) & (wavelength_obs_rv_corrected < line + obs_cut_aa_one)
         masks.append(mask_one)
 
         mask_payne = (wavelength_payne > line - payne_cut_aa_one) & (wavelength_payne < line + payne_cut_aa_one)
@@ -265,7 +284,7 @@ def fit_teff(labels, payne_coeffs, x_min, x_max, stellar_rv, h_line_cores, wavel
     input_values = [None, None, None, 99] + [0] * (len(labels) - 4) + [None, 0, None]
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds)
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, teff_lines_to_use, obs_cut_aa=15, payne_cut_aa=20)
+        wavelength_obs, flux_obs, wavelength_payne, teff_lines_to_use, stellar_rv, obs_cut_aa=15, payne_cut_aa=20)
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
         wavelength_payne_cut,
@@ -307,7 +326,7 @@ def fit_logg(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, w
     input_values[ca_index] = None
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds)
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, logg_lines, obs_cut_aa=5, payne_cut_aa=6)
+        wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=5, payne_cut_aa=6)
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
         wavelength_payne_cut,
@@ -353,7 +372,7 @@ def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wa
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds)
 
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, fe_lines, obs_cut_aa=0.5, payne_cut_aa=0.75)
+        wavelength_obs, flux_obs, wavelength_payne, fe_lines, stellar_rv, obs_cut_aa=0.5, payne_cut_aa=0.75)
 
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
@@ -407,7 +426,6 @@ def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wa
 def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
     path = f"../linemasks/{element_to_fit.split('_')[0].lower()}.csv"
     if os.path.exists(path):
-        print("Loading linemask")
         elements_lines_data = pd.read_csv(path)
         element_lines = list(elements_lines_data['ll'])
         if "dlam" in elements_lines_data.columns:
@@ -435,7 +453,7 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds)
 
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, element_lines, obs_cut_aa=dlam, payne_cut_aa=dlam * 1.5)
+        wavelength_obs, flux_obs, wavelength_payne, element_lines, stellar_rv, obs_cut_aa=dlam, payne_cut_aa=dlam * 1.5)
 
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
@@ -490,6 +508,11 @@ doppler_shift  :      0.327 +/-      0.008"""
     x_min = list(payne_coeffs[-2])
     x_max = list(payne_coeffs[-1])
 
+    label_names = labels.copy()
+    label_names.append('vsini')
+    label_names.append('vmac')
+    label_names.append('doppler_shift')
+
     resolution_val = None
 
     wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
@@ -516,26 +539,10 @@ doppler_shift  :      0.327 +/-      0.008"""
 
     #wavelength_obs, flux_obs = conv_res(wavelength_obs, flux_obs, 20000)
 
-    mask = (flux_obs > 0.0) & (flux_obs < 1.2)
-    wavelength_obs = wavelength_obs[mask]
-    flux_obs = flux_obs[mask]
+    h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
+    h_line_cores = list(h_line_cores['ll'])
 
-    h_line_cores = [3970.072, 4101.734, 4340.462, 4861.323, 6562.696]
-    h_line_core_mask_dlam = 0.5
-
-    mask = np.all(np.abs(wavelength_obs[:, None] - h_line_cores) > h_line_core_mask_dlam, axis=1)
-
-    wavelength_obs = wavelength_obs[mask]
-    flux_obs = flux_obs[mask]
-
-    l_cut = (wavelength_obs > wavelength_payne[0]) & (wavelength_obs < wavelength_payne[-1])
-    wavelength_obs = wavelength_obs[l_cut]
-    flux_obs = flux_obs[l_cut]
-
-    label_names = labels.copy()
-    label_names.append('vsini')
-    label_names.append('vmac')
-    label_names.append('doppler_shift')
+    wavelength_obs, flux_obs = process_spectra(wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5)
 
     final_parameters = {}
     final_parameters_std = {}
@@ -600,8 +607,7 @@ doppler_shift  :      0.327 +/-      0.008"""
     exit()
 
     doppler_shift = final_parameters['doppler_shift']
-    #vmac = final_parameters['vmac']
-    vmac = 0
+    vmac = final_parameters['vmac']
     vsini = final_parameters['vsini']
 
     final_params = []
