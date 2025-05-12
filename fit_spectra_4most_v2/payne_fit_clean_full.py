@@ -272,7 +272,7 @@ def get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv):
     p0 += [3, 3, 0]
 
     input_values = [None] * len(p0)
-    def_bounds = (x_min + [0, 0, -0.01 + stellar_rv], x_max + [50, 50, 0.01 + stellar_rv])
+    def_bounds = (x_min + [0, 0, -0.1 + stellar_rv], x_max + [100, 100, 0.1 + stellar_rv])
     return p0, input_values, def_bounds
 
 
@@ -375,9 +375,11 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
     # find location of mg_fe and ca_fe in the labels
     mg_index = labels.index("Mg_Fe")
     ca_index = labels.index("Ca_Fe")
+    o_index = labels.index("O_Fe")
     # set mg and ca to 0
     input_values[mg_index] = None
     input_values[ca_index] = None
+    input_values[o_index] = None
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
         wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=h_line_cut + mg_line_cut + ca_line_cut + fe_line_cut,

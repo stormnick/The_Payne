@@ -44,7 +44,12 @@ if __name__ == '__main__':
 
     fitted_values = pd.DataFrame(columns=["spectraname", *labels, "vsini", "vmac", "doppler_shift"])
 
+    file_to_fit = "7962.spec_hrs_cont.npy"
+
     for file in files:
+        if file != file_to_fit:
+            continue
+
         print(f"Fitting {file}")
         continuum = np.load(f"{folder_continuum}/{file}")
         spectra = np.load(f"{folder_spectra}/{file.replace('cont', f'snr{snr_to_do}.0')}")
@@ -137,12 +142,5 @@ if __name__ == '__main__':
             columns=["spectraname"] + list(final_parameters.keys())
         )
 
-        #plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels)
-
-        # Concatenate to the bottom:
-        fitted_values = pd.concat([fitted_values, new_row_df], ignore_index=True)
-        fitted_values.to_csv(f"fitted_{snr_to_do}.csv", index=False)
-
-    fitted_values = fitted_values.round(5)
-    fitted_values.to_csv(f"fitted_{snr_to_do}.csv", index=False)
+        plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels)
 
