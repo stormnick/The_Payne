@@ -376,14 +376,16 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
     mg_index = labels.index("Mg_Fe")
     ca_index = labels.index("Ca_Fe")
     o_index = labels.index("O_Fe")
+    c_index = labels.index("C_Fe")
     # set mg and ca to 0
     input_values[mg_index] = None
     input_values[ca_index] = None
     input_values[o_index] = None
+    input_values[c_index] = None
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=h_line_cut + mg_line_cut + ca_line_cut + fe_line_cut,
-        payne_cut_aa=h_line_payne_cut+mg_line_payne_cut+ca_line_payne_cut+fe_line_payne_cut)
+        wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=mg_line_cut + ca_line_cut + fe_line_cut,
+        payne_cut_aa=mg_line_payne_cut+ca_line_payne_cut+fe_line_payne_cut)
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
         wavelength_payne_cut,
@@ -400,6 +402,7 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
         flux_obs_cut_to_lines,
         p0=p0,
         bounds=def_bounds,
+        max_nfev=10e5
     )
     if not silent:
         print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
@@ -426,6 +429,11 @@ def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wa
 
     input_values = [final_parameters["teff"], final_parameters["logg"], None, None] + [0] * (
                 len(labels) - 4) + [vsini_value, vmac_value, final_parameters["doppler_shift"]]
+
+    o_index = labels.index("O_Fe")
+    c_index = labels.index("C_Fe")
+    input_values[o_index] = None
+    input_values[c_index] = None
 
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
 
@@ -545,7 +553,7 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
     #input_values[index_element] = float(popt[0])
     return float(popt[0]), float(np.sqrt(np.diag(pcov))[0])
 
-def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels, resolution_val=None):
+def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels, resolution_val=None, real_labels2=None, real_labels2_xfe=None, real_labels2_vsini=None):
     doppler_shift = final_parameters['doppler_shift']
     vmac = final_parameters['vmac']
     vsini = final_parameters['vsini']
@@ -573,10 +581,36 @@ def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, waveleng
                                                                resolution_val)
 
 
+    if real_labels2 is not None:
+        real_labels[0:4] = real_labels2
+        for element in real_labels2_xfe.keys():
+            idx_element = labels.index(element)
+            real_labels[idx_element] = real_labels2_xfe[element]
+        scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
+        payne_fitted_spectra2 = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
+                                                                            NN_coeffs=payne_coeffs, kovalev_alt=True)
+
+        wavelength_payne_plot2 = wavelength_payne
+        if vmac > 1e-3:
+            wavelength_payne_plot2, payne_fitted_spectra2 = conv_macroturbulence(wavelength_payne_plot2,
+                                                                                 payne_fitted_spectra2, vmac)
+        if vsini > 1e-3 and real_labels2_vsini is None:
+            wavelength_payne_plot2, payne_fitted_spectra2 = conv_rotation(wavelength_payne_plot2, payne_fitted_spectra2,
+                                                                          vsini)
+        elif real_labels2_vsini is not None:
+            wavelength_payne_plot2, payne_fitted_spectra2 = conv_rotation(wavelength_payne_plot2, payne_fitted_spectra2, real_labels2_vsini)
+        if resolution_val is not None:
+            wavelength_payne_plot2, payne_fitted_spectra2 = conv_res(wavelength_payne_plot2, payne_fitted_spectra2,
+                                                                     resolution_val)
+
+
     plt.figure(figsize=(18, 6))
     plt.scatter(wavelength_obs, flux_obs, label="Observed", s=3, color='k')
     plt.plot(wavelength_payne_plot * (1 + (doppler_shift / 299792.)), payne_fitted_spectra, label="Payne",
              color='r')
+    if real_labels2 is not None:
+        plt.plot(wavelength_payne_plot2 * (1 + (doppler_shift / 299792.)), payne_fitted_spectra2, label="Payne input",
+                 color='b')
     plt.legend()
     plt.ylim(0.0, 1.05)
     plt.xlim(wavelength_payne_plot[0], wavelength_payne_plot[-1])

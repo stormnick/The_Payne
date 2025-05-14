@@ -35,24 +35,24 @@ if __name__ == '__main__':
     resolution_val = None
 
     # get all filenames in the folder
-    folder_continuum = "/Users/storm/PycharmProjects/payne/ts_nlte_grid_july2024/cont_infsnr/"
-    snr_to_do = 250
+    snr_to_do = 1000
     folder_spectra = f"/Users/storm/PycharmProjects/payne/ts_nlte_grid_july2024/snr{int(snr_to_do)}/"
-    files = os.listdir(folder_continuum)
+    folder_spectra = f"/Users/storm/PycharmProjects/payne/ts_nlte_grid_apr2024/batch0_nlte_4mostified_v3/"
+    files = os.listdir(folder_spectra)
     # only take those with "hrs" in it
-    files = [file for file in files if "hrs" in file]
+    files = [file for file in files if f"hrs_snr{snr_to_do}" in file]
 
     fitted_values = pd.DataFrame(columns=["spectraname", *labels, "vsini", "vmac", "doppler_shift"])
 
-    file_to_fit = "7962.spec_hrs_cont.npy"
+    file_to_fit = f"9668.spec_hrs_snr{snr_to_do}.0.npy"
 
     for file in files:
         if file != file_to_fit:
             continue
 
         print(f"Fitting {file}")
-        continuum = np.load(f"{folder_continuum}/{file}")
-        spectra = np.load(f"{folder_spectra}/{file.replace('cont', f'snr{snr_to_do}.0')}")
+        continuum = np.load(f"{folder_spectra}/{file.replace(f'snr{snr_to_do}.0', f'cont')}")
+        spectra = np.load(f"{folder_spectra}/{file}")
         wavelength_obs = continuum[0]
         flux_obs = spectra[1] / continuum[1]
         stellar_rv = 0
@@ -81,7 +81,7 @@ if __name__ == '__main__':
                                                                                          x_max, stellar_rv,
                                                                                          wavelength_obs, flux_obs,
                                                                                          wavelength_payne,
-                                                                                         resolution_val, silent=True)
+                                                                                         resolution_val, silent=False)
 
         final_parameters["teff"] = teff
         final_parameters_std["teff"] = teff_std
@@ -143,4 +143,5 @@ if __name__ == '__main__':
         )
 
         plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels)
+        plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels, real_labels2=[3.923,1.549,-2.05,1.52], real_labels2_xfe={"C_Fe": 0.733 * 0, "O_Fe": -0.038, "Ti_Fe": -0.063}, real_labels2_vsini=0.93719)
 

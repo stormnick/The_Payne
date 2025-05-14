@@ -14,13 +14,16 @@ from scipy.optimize import curve_fit
 from payne_fit_clean_full import (fit_teff, fit_logg, fit_feh, fit_one_xfe_element, process_spectra, load_payne,
                                   fit_teff_logg, plot_fitted_payne)
 import random
+from dask.distributed import Client, LocalCluster, wait
+import dask.dataframe as dd
+from dask import delayed
 
 matplotlib.use("MacOSX")
 # plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyle")
 
 # Created by storm at 03.03.25
 
-def fit_one_spectrum(stellar_rv):
+def fit_one_spectrum(file, stellar_rv):
     print(f"Fitting {file}")
     continuum = np.load(f"{file.replace(f'snr{snr_to_do}.0', f'cont')}")
     spectra = np.load(f"{file}")
@@ -110,6 +113,16 @@ def fit_one_spectrum(stellar_rv):
 
     return new_row_df
 
+@delayed
+def fit_one_spectrum_delayed(path, stellar_rv):
+    """
+    Wraps your existing routine so it can run on a Dask worker.
+
+    It *must* return a 1-row pandas.DataFrame (or Series) with the
+    exact columns defined above.
+    """
+    return fit_one_spectrum(path, stellar_rv)  # ← your original code
+
 
 if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_2025-03-27-08-06-34.npz"
@@ -152,13 +165,22 @@ if __name__ == '__main__':
 
     fitted_values = pd.DataFrame(columns=["spectraname", *labels, "vsini", "vmac", "doppler_shift"])
 
-    for file in files:
-        new_row_df = fit_one_spectrum(stellar_rv)
+    cluster = LocalCluster()  # or use your scheduler / SLURM / PBS…
+    client = Client(threads_per_worker=1, n_workers=8)
 
-        # Concatenate to the bottom:
-        fitted_values = pd.concat([fitted_values, new_row_df], ignore_index=True)
-        fitted_values.to_csv(f"fitted_{snr_to_do}.csv", index=False)
+    columns = ["spectraname", *labels, "vsini", "vmac", "doppler_shift"]
+    meta = pd.DataFrame(columns=columns)  # tells Dask the schema
 
+    # --- 3. build the task graph -------------------------------------------------
+    delayed_rows = [fit_one_spectrum_delayed(f, stellar_rv) for f in files]
+
+    # turn the list of delayed DataFrames into a Dask-DataFrame
+    ddf = dd.from_delayed(delayed_rows, meta=None)
+
+    # --- 4. execute (+ optional progress bar) ------------------------------------
+    # Bring everything back as an ordinary pandas.DataFrame,
+    # do final rounding, and write ONE csv.
+    fitted_values = ddf.compute()  # → pandas
     fitted_values = fitted_values.round(5)
     fitted_values.to_csv(f"fitted_{snr_to_do}.csv", index=False)
 
