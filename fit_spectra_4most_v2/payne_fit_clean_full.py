@@ -11,6 +11,7 @@ from The_Payne import spectral_model
 from convolve import *
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
+import os
 
 matplotlib.use("MacOSX")
 # plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyle")
@@ -115,13 +116,8 @@ def load_payne(path_model):
     b_array_2 = tmp["b_array_2"]
     x_min = tmp["x_min"]
     x_max = tmp["x_max"]
-    try:
-        wavelength = tmp["wavelength"]
-        labels = list(tmp["label_names"])
-    except KeyError:
-        lmin, lmax = 5330, 5615
-        wavelength = np.linspace(lmin, lmax + 0.001, 28501)
-        labels = ['teff', 'logg', 'feh', 'vmic', 'C_Fe', 'Mg_Fe', 'Ca_Fe', 'Ti_Fe', 'Ba_Fe']
+    wavelength = tmp["wavelength"]
+    labels = list(tmp["label_names"])
     tmp.close()
     payne_coeffs = (w_array_0, w_array_1, w_array_2,
                     b_array_0, b_array_1, b_array_2,
@@ -130,7 +126,7 @@ def load_payne(path_model):
 
 
 def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_values, resolution_val=None,
-            pixel_limits=None):
+            pixel_limits=None, flux_obs=None):
     def model_spectrum_for_curve_fit(wavelength_obs, *params_to_fit):
         spectra_params = np.array(input_values).copy().astype(float)
         j = 0
@@ -159,6 +155,12 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
 
         wavelength_payne_ = wavelength_payne
 
+        #plt.figure(figsize=(14, 7))
+        #plt.title(params_to_fit[0])
+        #plt.scatter(wavelength_obs, flux_obs, s=3, color='k')
+        #plt.plot(wavelength_payne_, spec_payne, color='r')
+        #plt.show()
+
         if vmac > 0:
             wavelength_payne_, spec_payne = apply_on_segments(
                 wavelength_payne_,
@@ -178,6 +180,12 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
 
         wavelength_payne_ = wavelength_payne_ * (1 + (doppler_shift / 299792.))
 
+        #plt.figure(figsize=(14, 7))
+        #plt.title(params_to_fit[0])
+        #plt.scatter(wavelength_obs, flux_obs, s=3, color='k')
+        #plt.plot(wavelength_payne_, spec_payne, color='r')
+        #plt.show()
+
         f_interp = interp1d(
             wavelength_payne_,
             spec_payne,
@@ -188,13 +196,16 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
 
         interpolated_spectrum = f_interp(wavelength_obs)
 
+        # calculate chi-squared
+        #chi_squared = np.sum((interpolated_spectrum - flux_obs) ** 2)
+        #print(params_to_fit[0], chi_squared)
+
+        #plt.figure(figsize=(14, 7))
+        #plt.title(params_to_fit[0])
         #plt.scatter(wavelength_obs, flux_obs, s=3, color='k')
         #plt.plot(wavelength_obs, interpolated_spectrum, color='r')
         #plt.show()
 
-        # calculate chi-squared
-        #chi_squared = np.sum((interpolated_spectrum - flux_obs) ** 2)
-        #print(chi_squared)
 
         return interpolated_spectrum
 
@@ -489,6 +500,24 @@ def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wa
 
     return float(popt[0]), float(np.sqrt(np.diag(pcov))[0]), float(popt[1]), float(np.sqrt(np.diag(pcov))[1]), vsini_value, vsini_error, vmac_value, vmac_error
 
+def scale_dlam(dlam, broadening):
+    return dlam
+    # scales dlam where to fit a line with broadening, a rough calculation based on my own
+    # done for R = 20 000
+    # at 0 broadening scaling ~ 1
+    # at 10 scaling ~ 1.2
+    # at 50 scaling ~ 2.8
+    # at 100 scaling ~ 5
+
+    # quadratic scaling
+    coefficients = [5.7e-05, 0.014481, 0.472108]
+    scaling = (coefficients[0] * broadening ** 2 + coefficients[1] * broadening + coefficients[2]) * 2
+
+    if type(dlam) is list:
+        dlam = np.asarray(dlam)
+
+    return dlam * scaling
+
 
 def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
     path = f"../linemasks/{element_to_fit.split('_')[0].lower()}.csv"
@@ -502,6 +531,8 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
     else:
         element_lines = [5000]
         dlam = 2000
+
+    dlam = scale_dlam(dlam, final_parameters["vsini"])
 
     p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
     input_values = [(final_parameters["teff"]), (final_parameters["logg"]), (final_parameters["feh"]),
@@ -553,7 +584,7 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
     #input_values[index_element] = float(popt[0])
     return float(popt[0]), float(np.sqrt(np.diag(pcov))[0])
 
-def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels, resolution_val=None, real_labels2=None, real_labels2_xfe=None, real_labels2_vsini=None):
+def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels, resolution_val=None, real_labels2=None, real_labels2_xfe=None, real_labels2_vsini=None, plot_show=True):
     doppler_shift = final_parameters['doppler_shift']
     vmac = final_parameters['vmac']
     vsini = final_parameters['vsini']
@@ -622,7 +653,8 @@ def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, waveleng
     logg_lines = list(mg_fe_lines) + list(ca_fe_lines)
     for logg_line in logg_lines:
         plt.axvline(logg_line, color='grey')
-    plt.show()
+    if plot_show:
+        plt.show()
 
 
 if __name__ == '__main__':
