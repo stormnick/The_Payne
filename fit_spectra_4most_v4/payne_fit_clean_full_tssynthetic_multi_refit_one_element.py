@@ -69,6 +69,11 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_coeffs, wavelength_payne, l
     for element_to_fit in elements_to_fit:
         final_parameters[element_to_fit] = payne_correct_row[element_to_fit].values[0]
         final_parameters_std[element_to_fit] = payne_correct_row[f"{element_to_fit}_std"].values[0]
+        # find label index
+        if final_parameters[element_to_fit] < -90:
+            index = labels.index(element_to_fit)
+            final_parameters[element_to_fit] = x_min[index]
+            final_parameters_std[element_to_fit] = -99
 
     for element_to_fit in elements_to_refit:
         xfe, xfe_std = fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, x_min, x_max,
@@ -108,7 +113,7 @@ def _wrapper(path, folder, payne_coeffs, wavelength_payne, labels, label_names, 
 if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_2025-06-11-08-02-05.npz"
     elements_to_refit = ["A_Li"]
-    payne_data = pd.read_csv("fitted_benchmark_extended.csv")
+    payne_data = pd.read_csv("fitted_benchmark_extended_refitted.csv")
 
     payne_coeffs, wavelength_payne, labels = load_payne(path_model)
     x_min = list(payne_coeffs[-2])

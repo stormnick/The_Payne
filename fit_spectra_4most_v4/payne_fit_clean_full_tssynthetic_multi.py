@@ -98,6 +98,10 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_coeffs, wavelength_payne, l
 
         final_parameters[element_to_fit] = xfe
         final_parameters_std[element_to_fit] = xfe_std
+        if final_parameters[element_to_fit] < -90:
+            index = labels.index(element_to_fit)
+            final_parameters[element_to_fit] = x_min[index]
+            final_parameters_std[element_to_fit] = -99
     print(f"Fitted {file} in {time.perf_counter() - start_time:.2f} seconds")
     # PRINT RESULTS
     for label in label_names:
