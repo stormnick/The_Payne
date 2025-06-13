@@ -12,7 +12,7 @@ matplotlib.use("MacOSX")
 
 if __name__ == '__main__':
     literature_data = pd.read_csv("../literature_param.csv")
-    payne_data = pd.read_csv("fitted_values_melchiors_v2.csv")
+    payne_data = pd.read_csv("fitted_values_melchiors_v2_test.csv")
 
     # remove .npy from the file names in payne_data
     payne_data["spectraname"] = payne_data["spectraname"].str.replace(".npy", "")
@@ -46,5 +46,5 @@ if __name__ == '__main__':
     ax[2].set_xlabel("[Fe/H] (Soubiran)")
     ax[2].set_ylabel("[Fe/H] (Payne)")
     ax[2].set_title("[Fe/H]")
-    plt.savefig("compare_melchiors_melchiors.png")
+    #plt.savefig("compare_melchiors_melchiors.png")
     plt.show()

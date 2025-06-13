@@ -18,17 +18,30 @@ matplotlib.use("MacOSX")
 
 # Created by storm at 03.03.25
 
-def process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5):
+def process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5, extra_payne_cut=10):
+    """
+    Loads the observed spectrum, cuts out unnecessary parts, and processes it to be used with the Payne model.
+    :param wavelength_payne: Wavelength array corresponding to the Payne model. Rest frame.
+    :param wavelength_obs: Wavelengths of the observed spectrum. Not in the rest frame.
+    :param flux_obs: Fluxes of the observed spectrum.
+    :param h_line_cores: List of hydrogen line core wavelengths to mask out.
+    :param h_line_core_mask_dlam: The width of the mask around the hydrogen line cores in Angstroms.
+    :param extra_payne_cut: Extra cut around the Payne model wavelength range in Angstroms.
+    :return: Returns the processed wavelength and flux arrays.
+    """
+    # remove any negative fluxes and fluxes > 1.2
     mask = (flux_obs > 0.0) & (flux_obs < 1.2)
     wavelength_obs = wavelength_obs[mask]
     flux_obs = flux_obs[mask]
 
+    # mask out the hydrogen line cores; to be fair not fully correct because h_line_cores are in rest frame, but we
+    # assume that the observed spectrum is close enough to the rest frame
     mask = np.all(np.abs(wavelength_obs[:, None] - h_line_cores) > h_line_core_mask_dlam, axis=1)
-
     wavelength_obs = wavelength_obs[mask]
     flux_obs = flux_obs[mask]
 
-    l_cut = (wavelength_obs > wavelength_payne[0]) & (wavelength_obs < wavelength_payne[-1])
+    # cut the observed spectrum to the Payne model wavelength range; no need to carry around the whole spectrum
+    l_cut = (wavelength_obs > wavelength_payne[0] - extra_payne_cut) & (wavelength_obs < wavelength_payne[-1] + extra_payne_cut)
     wavelength_obs = wavelength_obs[l_cut]
     flux_obs = flux_obs[l_cut]
     return wavelength_obs, flux_obs
@@ -79,6 +92,8 @@ def apply_on_segments(
         **func_kwargs):        # forwarded keyword args
     """
     Call `func` independently on each uniformly-spaced wavelength segment.
+    Basically, it applies convolution on each spectra segment that is separated by a "large" gap.
+    It is faster than applying `func` on the whole array at once, especially for large arrays.
 
     Returns
     -------
@@ -115,6 +130,11 @@ def apply_on_segments(
     return np.concatenate(w_out), np.concatenate(s_out)
 
 def load_payne(path_model):
+    """
+    Loads the Payne model coefficients from a .npz file.
+    :param path_model: Path to the .npz file containing the Payne model coefficients.
+    :return: Returns a tuple containing the coefficients and the wavelength array.
+    """
     tmp = np.load(path_model)
     w_array_0 = tmp["w_array_0"]
     w_array_1 = tmp["w_array_1"]
@@ -124,9 +144,13 @@ def load_payne(path_model):
     b_array_2 = tmp["b_array_2"]
     x_min = tmp["x_min"]
     x_max = tmp["x_max"]
+    # wavelength is the wavelength array corresponding to the Payne model in AA
     wavelength = tmp["wavelength"]
+    # labels are the label names corresponding to the Payne model, e.g. "teff", "logg", "feh", etc.
     labels = list(tmp["label_names"])
     tmp.close()
+    # w_array are the weights, b_array are the biases
+    # x_min and x_max are the minimum and maximum values for scaling the labels
     payne_coeffs = (w_array_0, w_array_1, w_array_2,
                     b_array_0, b_array_1, b_array_2,
                     x_min, x_max)
@@ -135,7 +159,37 @@ def load_payne(path_model):
 
 def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_values, resolution_val=None,
             pixel_limits=None, flux_obs=None):
+    """
+    Creates a model spectrum function for curve fitting.
+    :param payne_coeffs: Coefficients from the Payne model. Typically first few arrays are weights and biases,
+    while the last two are x_min and x_max for scaling.
+    :param wavelength_payne: Wavelength array corresponding to the Payne model. Rest frame.
+    :param input_values: Since we cannot pass arguments, we pass values that we fix (i.e. do not fit) in the input_values.
+    Example: [10, None, 5] would mean that the first parameter is fixed at 10, the second is free to fit, and the third is fixed at 5.
+    :param resolution_val: Resolution value for convolution of Payne spectrum, if applicable.
+    :param pixel_limits: A boolean mask for the pixel limits, if applicable. It masks the payne array to only
+    include pixels that are within the limits.
+    It can take three different types:
+    1. Full of lists/tuples with wavelength limits, e.g. [(5000, 5005), (6000, 6005)] would mean that only pixels
+    between 5000 and 5005 and between 6000 and 6005 are used.
+    2. length is 2, with limits where to use: E.g. [5000, 5005] would mean that only pixels between 5000 and 5005 are used.
+    3. Same length as the wavelength_payne, mask of the pixels to mask: E.g. [True, False, True] would mean that the
+    first and third pixels are included, while the second is excluded.
+    :param flux_obs: Observations, but only for plotting purposes, not for fitting.
+    :return: Callable function that takes wavelength_obs and parameters to fit, and returns the model spectrum.
+    """
     def model_spectrum_for_curve_fit(wavelength_obs, *params_to_fit):
+        """
+        Model spectrum function for curve fitting.
+        :param wavelength_obs: Wavelengths of the observed spectrum. Not in the rest frame, but the closer it is, the better
+        :param params_to_fit: A list of parameters to fit. The length of this list should be equal to the number of
+        parameters that are not fixed in the input_values.
+        Example: if input_values = [10, None, 5], then params_to_fit should have length 1, and it will be the second parameter
+        and it will be fitted.
+        :return: Interpolated model spectrum at the observed wavelengths (i.e not in the rest frame).
+        """
+        # spectra_params is what we will use to create the model spectrum. Take input values from `input_values` that we
+        # do not fit and fill in the None values with the values we fit from `params_to_fit`.
         spectra_params = np.array(input_values).copy().astype(float)
         j = 0
         for i, input_value in enumerate(input_values):
@@ -143,6 +197,7 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
                 spectra_params[i] = params_to_fit[j]
                 j += 1
 
+        # here we assume that the last three parameters are vsini, vmac, and doppler_shift
         vsini = spectra_params[-3]
         vmac = spectra_params[-2]
         doppler_shift = spectra_params[-1]
@@ -150,9 +205,12 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
         real_labels = spectra_params[:-3]
 
         # if vmic is 99, then scale with teff/logg/feh
+        # if we pass vmic = 99 (i.e. not None), it is not fitted. But sometimes we want to calculate it based on the
+        # emprirical formula for the speed. Citation: Bergemann & Hoppe (LRCA, in prep.)
         if real_labels[3] >= 99:
             real_labels[3] = calculate_vturb(real_labels[0] * 1000, real_labels[1], real_labels[2])
 
+        # scale the labels to the Payne coefficients and get the spectrum
         scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
         spec_payne = spectral_model.get_spectrum_from_neural_net(
             scaled_labels=scaled_labels,
@@ -163,37 +221,43 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
 
         wavelength_payne_ = wavelength_payne
 
+        # debug: preview the spectrum before convolutions
         #plt.figure(figsize=(14, 7))
         #plt.title(params_to_fit[0])
         #plt.scatter(wavelength_obs, flux_obs, s=3, color='k')
         #plt.plot(wavelength_payne_, spec_payne, color='r')
         #plt.show()
 
+        # apply convolutions if needed
         if vmac > 0:
             wavelength_payne_, spec_payne = apply_on_segments(
                 wavelength_payne_,
                 spec_payne,
-                conv_macroturbulence,       # <-- your original routine
-                vmac                 # forwarded to conv_rotation
+                conv_macroturbulence,
+                vmac
             )
         if vsini > 0:
             wavelength_payne_, spec_payne = apply_on_segments(
                 wavelength_payne_,
                 spec_payne,
-                conv_rotation,       # <-- your original routine
-                vsini                 # forwarded to conv_rotation
+                conv_rotation,
+                vsini
             )
         if resolution_val is not None:
             wavelength_payne_, spec_payne = conv_res(wavelength_payne_, spec_payne, resolution_val)
 
-        wavelength_payne_ = wavelength_payne_ * (1 + (doppler_shift / 299792.))
+        # apply doppler shift
+        if doppler_shift != 0:
+            wavelength_payne_ = wavelength_payne_ * (1 + (doppler_shift / 299792.))
 
+        # debug: preview the spectrum after convolutions
         #plt.figure(figsize=(14, 7))
         #plt.title(params_to_fit[0])
         #plt.scatter(wavelength_obs, flux_obs, s=3, color='k')
         #plt.plot(wavelength_payne_, spec_payne, color='r')
         #plt.show()
 
+        # interpolate the spectrum to the observed wavelengths
         f_interp = interp1d(
             wavelength_payne_,
             spec_payne,
@@ -201,29 +265,36 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
             bounds_error=False,
             fill_value=1
         )
-
         interpolated_spectrum = f_interp(wavelength_obs)
 
+        # debug: preview the interpolated spectrum
         # calculate chi-squared
         #chi_squared = np.sum((interpolated_spectrum - flux_obs) ** 2)
         #print(params_to_fit[0], chi_squared)
-
         #plt.figure(figsize=(14, 7))
         #plt.title(params_to_fit[0])
         #plt.scatter(wavelength_obs, flux_obs, s=3, color='k')
         #plt.plot(wavelength_obs, interpolated_spectrum, color='r')
         #plt.show()
 
-
         return interpolated_spectrum
 
     return model_spectrum_for_curve_fit
 
 def scale_back(x, x_min, x_max, label_name=None):
+    """
+    Scales back the input values from the Payne model to the original scale.
+    :param x: Values to scale back, typically coefficients from the Payne model.
+    :param x_min: Minimum values for scaling, corresponding to the Payne model.
+    :param x_max: Maximum values for scaling, corresponding to the Payne model.
+    :param label_name: Optional label name to adjust the scaling for specific labels, e.g. "teff".
+    :return: Returns the scaled back values as a list.
+    """
     x = np.array(x)
     x_min = np.array(x_min)
     x_max = np.array(x_max)
     return_value = (x + 0.5) * (x_max - x_min) + x_min
+    # if teff, the teff is typically in kK, so we scale it back to K
     if label_name == "teff":
         return_value = return_value * 1000
     return list(return_value)
@@ -325,7 +396,6 @@ def fit_teff(labels, payne_coeffs, x_min, x_max, stellar_rv, teff_lines_to_use, 
         print(popt)
     return float(popt[0]), float(np.sqrt(np.diag(pcov))[0])
 
-
 def fit_logg(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
     # load mg_fe and ca_fe lines
     mg_fe_lines = pd.read_csv("../linemasks/mg_triplet.csv")
@@ -382,12 +452,12 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
     mg_line_payne_cut = [0.75] * len(mg_fe_lines)
     ca_fe_lines = pd.read_csv("../linemasks/ca_triplet.csv")
     ca_fe_lines = ca_fe_lines['ll']
-    ca_line_cut = [0.5] * len(ca_fe_lines)
-    ca_line_payne_cut = [0.75] * len(ca_fe_lines)
+    ca_line_cut = [0.75] * len(ca_fe_lines)
+    ca_line_payne_cut = [1] * len(ca_fe_lines)
     fe_lines = pd.read_csv("../fe_lines_hr_good.csv")
     fe_lines = list(fe_lines["ll"])
-    fe_line_cut = [0.5] * len(fe_lines)
-    fe_line_payne_cut = [0.75] * len(fe_lines)
+    fe_line_cut = [0.75] * len(fe_lines)
+    fe_line_payne_cut = [1] * len(fe_lines)
     # combine both
     logg_lines = list(mg_fe_lines) + list(fe_lines) + list(ca_fe_lines)
     p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)

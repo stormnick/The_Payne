@@ -22,8 +22,6 @@ def process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_
     wavelength_obs = wavelength_obs[mask]
     flux_obs = flux_obs[mask]
 
-    h_line_core_mask_dlam = 0.5
-
     mask = np.all(np.abs(wavelength_obs[:, None] - h_line_cores) > h_line_core_mask_dlam, axis=1)
 
     wavelength_obs = wavelength_obs[mask]
@@ -274,17 +272,16 @@ def get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv):
     p0 += [3, 3, 0]
 
     input_values = [None] * len(p0)
-    def_bounds = (x_min + [0, 0, -10 + stellar_rv], x_max + [15, 15, 10 + stellar_rv])
+    def_bounds = (x_min + [0, 0, -100 + stellar_rv], x_max + [50, 50, 100 + stellar_rv])
     return p0, input_values, def_bounds
 
 
-def fit_teff(labels, payne_coeffs, x_min, x_max, stellar_rv, h_line_cores, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
-    teff_lines_to_use = h_line_cores
+def fit_teff(labels, payne_coeffs, x_min, x_max, stellar_rv, teff_lines_to_use, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
     p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
     input_values = [None, None, None, 99] + [0] * (len(labels) - 4) + [None, 0, None]
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, teff_lines_to_use, stellar_rv, obs_cut_aa=15, payne_cut_aa=20)
+        wavelength_obs, flux_obs, wavelength_payne, teff_lines_to_use, stellar_rv, obs_cut_aa=0.75, payne_cut_aa=1)
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
         wavelength_payne_cut,
@@ -305,6 +302,7 @@ def fit_teff(labels, payne_coeffs, x_min, x_max, stellar_rv, h_line_cores, wavel
     if not silent:
         print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
         print(f"Fitted teff: {popt[0] * 1000:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
+        print(popt)
     return float(popt[0]), float(np.sqrt(np.diag(pcov))[0])
 
 
@@ -314,8 +312,10 @@ def fit_logg(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, w
     mg_fe_lines = mg_fe_lines['ll']
     ca_fe_lines = pd.read_csv("../linemasks/ca_triplet.csv")
     ca_fe_lines = ca_fe_lines['ll']
+    fe_lines = pd.read_csv("../fe_lines_hr_good.csv")
+    fe_lines = list(fe_lines["ll"])
     # combine both
-    logg_lines = list(mg_fe_lines) + list(ca_fe_lines)
+    logg_lines = list(mg_fe_lines) + list(fe_lines) + list(ca_fe_lines)
     p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
     input_values = [final_parameters["teff"], None, None, 99] + [0] * (len(labels) - 4) + [None, 0, None]
     # find location of mg_fe and ca_fe in the labels
@@ -326,7 +326,7 @@ def fit_logg(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, w
     input_values[ca_index] = None
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=5, payne_cut_aa=6)
+        wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=1, payne_cut_aa=2)
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
         wavelength_payne_cut,
@@ -349,6 +349,62 @@ def fit_logg(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, w
         print(f"Fitted logg: {popt[0]:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
         print(f"Fitted doppler shift: {popt[-1]:.3f} +/- {np.sqrt(np.diag(pcov))[-1]:.3f}")
     return float(popt[0]), float(np.sqrt(np.diag(pcov))[0]), float(popt[-1]), float(np.sqrt(np.diag(pcov))[-1])
+
+def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
+    # load mg_fe and ca_fe lines
+    h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
+    h_line_cores = h_line_cores['ll']
+    h_line_cut = [15] * len(h_line_cores)
+    h_line_payne_cut = [20] * len(h_line_cores)
+    mg_fe_lines = pd.read_csv("../linemasks/mg_triplet.csv")
+    mg_fe_lines = mg_fe_lines['ll']
+    mg_line_cut = [0.5] * len(mg_fe_lines)
+    mg_line_payne_cut = [0.75] * len(mg_fe_lines)
+    ca_fe_lines = pd.read_csv("../linemasks/ca_triplet.csv")
+    ca_fe_lines = ca_fe_lines['ll']
+    ca_line_cut = [0.5] * len(ca_fe_lines)
+    ca_line_payne_cut = [0.75] * len(ca_fe_lines)
+    fe_lines = pd.read_csv("../fe_lines_hr_good.csv")
+    fe_lines = list(fe_lines["ll"])
+    fe_line_cut = [0.5] * len(fe_lines)
+    fe_line_payne_cut = [0.75] * len(fe_lines)
+    # combine both
+    logg_lines = list(mg_fe_lines) + list(fe_lines) + list(ca_fe_lines)
+    p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
+    input_values = [None, None, None, 99] + [0] * (len(labels) - 4) + [None, 0, None]
+    # find location of mg_fe and ca_fe in the labels
+    mg_index = labels.index("Mg_Fe")
+    ca_index = labels.index("Ca_Fe")
+    # set mg and ca to 0
+    input_values[mg_index] = None
+    input_values[ca_index] = None
+    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
+    wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
+        wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=h_line_cut + mg_line_cut + ca_line_cut + fe_line_cut,
+        payne_cut_aa=h_line_payne_cut+mg_line_payne_cut+ca_line_payne_cut+fe_line_payne_cut)
+    model_func = make_model_spectrum_for_curve_fit(
+        payne_coeffs,
+        wavelength_payne_cut,
+        input_values,
+        resolution_val=resolution_val,
+        pixel_limits=combined_mask_payne
+    )
+    if not silent:
+        print("Fitting...")
+        time_start = time.perf_counter()
+    popt, pcov = curve_fit(
+        model_func,
+        wavelength_obs_cut_to_lines,
+        flux_obs_cut_to_lines,
+        p0=p0,
+        bounds=def_bounds,
+    )
+    if not silent:
+        print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
+        print(f"Fitted teff: {popt[0]:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
+        print(f"Fitted logg: {popt[1]:.3f} +/- {np.sqrt(np.diag(pcov))[1]:.3f}")
+        print(f"Fitted doppler shift: {popt[-1]:.3f} +/- {np.sqrt(np.diag(pcov))[-1]:.3f}")
+    return float(popt[0]), float(np.sqrt(np.diag(pcov))[0]), float(popt[1]), float(np.sqrt(np.diag(pcov))[1]), float(popt[-1]), float(np.sqrt(np.diag(pcov))[-1])
 
 
 def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False, fit_vsini=False, fit_vmac=False):

@@ -435,9 +435,53 @@ def print_intermediate_results(intermediate_results: dict, atmosphere_type: str,
                         string_to_print += f"{key}= {intermediate_results[key]:>9.4f} "
         print(string_to_print)
 
-def calc_chi_sqr_generic_lbl(feh: float, elem_abund_dict_xh: dict, vmic: float, teff: float, logg: float,
-                             lmin: float, lmax: float,
-                             lmin_segment: float, lmax_segment: float, temp_directory: str, line_number: int) -> float:
+
+def fit_teff(payne_coeffs, labels, wavelength_payne, input_values):
+    real_labels = list(input_values).copy()
+
+    lmin, lmax = np.min(wavelength_payne), np.max(wavelength_payne)
+    lmin, lmax = 6535, 6590
+    function_arguments = (real_labels, payne_coeffs, labels, wavelength_payne, lmin, lmax)
+
+    param_guess = np.array([[4000], [8000]])
+    #min_bounds = [(self.bound_min_teff, self.bound_max_teff)]
+
+    minimize_options = {'maxfev': 100, 'disp': False, 'initial_simplex': param_guess,
+                        'xatol': 1, 'fatol': 0.001}
+
+    res = minimize_function(calc_chi_sqr_teff, param_guess[0], function_arguments, None, 'Nelder-Mead',
+                            minimize_options)
+
+    teff = res.x[0]
+    chi_squared = res.fun
+
+    print(f"teff={teff:.2f}, chi_squared={chi_squared:.5f}")
+
+    return teff
+
+def calc_chi_sqr_teff(param: list, real_labels, payne_coeffs, labels, wavelength_payne, lmin: float, lmax: float) -> float:
+    """
+    Calculates the chi squared by varying teff and fitting broadening inside
+    :param param: Parameters list with the current evaluation guess
+    :param ssg: Synthetic spectrum generator object
+    :param spectra_to_fit: Spectra to fit
+    :param lmin: Start of the line [AA], where to calculate chi squared
+    :param lmax: End of the line [AA], where to calculate chi squared
+    :param lmin_segment: Start of the segment, where spectra is generated [AA]
+    :param lmax_segment: End of the segment, where spectra is generated [AA]
+    :param temp_directory: Temporary directory where code is being run
+    :param line_number: Which line number/index in line_center_sorted is being fitted
+    :return: best fit chi squared
+    """
+    # param[0] = teff
+    teff = param[0]
+
+    real_labels = real_labels.copy()
+    real_labels[0] = teff / 1000
+
+    return calc_chi_sqr_generic_lbl(real_labels, payne_coeffs, labels, wavelength_payne, lmin, lmax)
+
+def calc_chi_sqr_generic_lbl(real_labels, payne_coeffs, labels, wavelength_fitted, lmin: float, lmax: float) -> float:
     """
     Calculates the chi squared for the given broadening parameters and small doppler shift for the generic lbl
     :param feh: Fe/H
@@ -455,44 +499,43 @@ def calc_chi_sqr_generic_lbl(feh: float, elem_abund_dict_xh: dict, vmic: float, 
     :param line_number: Which line number/index in line_center_sorted is being fitted
     :return: best fit chi squared
     """
-    macroturb = 999999    # for printing only here, in case not fitted
-    rotation = 999999
-    rv = 999999
+    fit_vmac, fit_rotation = True, False
     # generates spectra
-    wavelength_fitted, flux_norm_fitted, flux_fitted = spectra_to_fit.configure_and_run_synthetic_code(ssg, feh, elem_abund_dict_xh, vmic,
-                                                                                                       lmin_segment, lmax_segment, False,
-                                                                                                       temp_dir=temp_directory, teff=teff, logg=logg)
+    flux_fitted = get_payne_spectra(real_labels[:-3], payne_coeffs)
 
-    spectra_generated, chi_squared = check_if_spectra_generated(wavelength_fitted, spectra_to_fit.night_mode)
-
-    param_guess, min_bounds = get_rv_macro_rotation_guess(min_macroturb=spectra_to_fit.guess_min_vmac, max_macroturb=spectra_to_fit.guess_max_vmac)
+    param_guess, min_bounds = get_rv_macro_rotation_guess(min_macroturb=1, max_macroturb=5, fit_vmac=fit_vmac,
+                                                          fit_rotation=fit_rotation)
     # now for the generated abundance it tries to fit best fit macro + doppler shift.
     # Thus, macro should not be dependent on the abundance directly, hopefully
     # Seems to work way better
-    function_args = (spectra_to_fit, lmin, lmax, wavelength_fitted, flux_norm_fitted)
+    # stellar_rv, vmac, rotation, resolution, fit_vmac, fit_rotation, wavelength_obs, flux_norm_obs,
+    #                            lmin: float, lmax: float,
+    #                            wavelength_fitted: np.ndarray, flux_norm_fitted: np.ndarray
+    #lmin, lmax = np.min(wavelength_fitted), np.max(wavelength_fitted)
+    doppler_shift = 0
+    vmac, vrot = 0, 0
+    function_args = (doppler_shift, vmac, vrot, resolution_val, fit_vmac, fit_rotation, wavelength_obs, flux_obs, lmin,
+                     lmax, wavelength_fitted, flux_fitted)
     minimize_options = {'maxiter': 3 * 50, 'disp': False}
     res = minimize_function(calc_chi_sq_broadening, np.median(param_guess, axis=0),
                             function_args, min_bounds, 'L-BFGS-B', minimize_options)
 
-    spectra_to_fit.rv_extra_fitted_dict[line_number] = res.x[0]
-    rv = spectra_to_fit.rv_extra_fitted_dict[line_number]
-    if spectra_to_fit.fit_vmac:
-        spectra_to_fit.vmac_fitted_dict[line_number] = res.x[1]
-        macroturb = spectra_to_fit.vmac_fitted_dict[line_number]
+    rv = res.x[0] + doppler_shift
+    if fit_vmac:
+        macroturb = res.x[1]
     else:
-        macroturb = spectra_to_fit.vmac
-    if spectra_to_fit.fit_rotation:
-        spectra_to_fit.rotation_fitted_dict[line_number] = res.x[-1]
-        rotation = spectra_to_fit.rotation_fitted_dict[line_number]
+        macroturb = vmac
+    if fit_rotation:
+        rotation = res.x[-1]
     else:
-        rotation = spectra_to_fit.rotation
+        rotation = vrot
+
     chi_squared = res.fun
 
-
-    intermediate_results = {"abundances": elem_abund_dict_xh, "teff": teff, "logg": logg, "rv": rv, "vmic": vmic,
-                            "vmac": macroturb, "rotation": rotation, "chi_sqr": chi_squared}
-
-    print_intermediate_results(intermediate_results, "1D", False)
+    intermediate_results = {"real_labels": real_labels, "labels": labels, "vmac": macroturb, "rotation": rotation,
+                            "chi_sqr": chi_squared}
+    print(f"teff={real_labels[0]*1000:.2f} vmac={macroturb:.2f} rotation={rotation:.2f} rv={rv:.2f} chi_sqr={chi_squared:.5f}")
+    #print_intermediate_results(intermediate_results, "1D", False)
 
     return chi_squared
 
@@ -551,7 +594,8 @@ if __name__ == '__main__':
     #input_values[0:3] = (5777, 4.44)
     input_values[-3:] = (0, None, None)
     input_values = (None, None, None, None, 0, 0, 0, 0, 0, 0, 0)
-    input_values = (None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    input_values = (None, 4.44, 0, 1, 0, 0, 0, 0, 0, 0, 0)
+    input_values = (None, 4.659, -0.206, 1.241, 0, 0, 0, 0, 0, 0, 0)
     columns_to_pop = []
     for i, input_value in enumerate(input_values):
         if input_value is not None:
@@ -580,23 +624,9 @@ if __name__ == '__main__':
             labels_to_fit[i] = False
 
 
-    model_func = make_model_spectrum_for_curve_fit(
-        payne_coeffs,
-        wavelength_payne,
-        input_values,
-        flux_obs,
-        resolution_val=resolution_val
-    )
-
     print("Fitting...")
 
-    popt, pcov = curve_fit(
-        model_func,
-        wavelength_obs,
-        flux_obs,
-        p0=p0,
-        bounds=def_bounds,
-    )
+    teff_fitted = fit_teff(payne_coeffs, labels, wavelength_payne, input_values)
 
     #num_samples = 10000
     #samples = np.random.multivariate_normal(mean=popt, cov=pcov, size=num_samples)
@@ -617,11 +647,12 @@ if __name__ == '__main__':
     print("Done fitting.")
 
     final_params = np.array(input_values).copy().astype(float)
-    j = 0
-    for i, input_value in enumerate(input_values):
-        if input_value is None:
-            final_params[i] = popt[j]
-            j += 1
+    #j = 0
+    #for i, input_value in enumerate(input_values):
+    #    if input_value is None:
+    #        final_params[i] = popt[j]
+    #        j += 1
+    final_params[0] = teff_fitted / 1000
 
     #print(popt)
     labels.append('vrot')
@@ -630,7 +661,8 @@ if __name__ == '__main__':
     j = 0
     for label, value, input_value in zip(labels, final_params, input_values):
         if input_value is None:
-            std_error = np.sqrt(np.diag(pcov))[j]
+            #std_error = np.sqrt(np.diag(pcov))[j]
+            std_error = -1
             j += 1
         else:
             std_error = -1
@@ -644,7 +676,8 @@ if __name__ == '__main__':
     doppler_shift = final_params[-1]
     vmac = final_params[-2]
     vrot = final_params[-3]
-
+    vmac = 3.84
+    doppler_shift = 0
     real_labels = final_params[:-3]
     scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
     payne_fitted_spectra = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
@@ -658,8 +691,11 @@ if __name__ == '__main__':
     if resolution_val is not None:
         wavelength_payne_plot, payne_fitted_spectra = conv_res(wavelength_payne_plot, payne_fitted_spectra, resolution_val)
 
+    wavelength_sun_ts, flux_sun_ts = np.loadtxt("./ts_spectra/sun_nlte.spec", dtype=float, unpack=True, usecols=(0, 1))
+
     plt.figure(figsize=(18, 6))
     plt.scatter(wavelength_obs, flux_obs, label="Observed", s=3, color='k')
+    plt.plot(wavelength_sun_ts, flux_sun_ts, label="TS", color='b')
     plt.plot(wavelength_payne_plot * (1 + (doppler_shift / 299792.)), payne_fitted_spectra, label="Payne", color='r')
     #plt.plot(wavelength_test * (1 + (doppler_shift / 299792.)), flux_test, label="Payne test", color='b')
     plt.ylim(0.0, 1.05)

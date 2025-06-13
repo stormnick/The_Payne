@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import pandas as pd
 import scipy
-from The_Payne import spectral_model
+import spectral_model
 from convolve import *
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     final_parameters_std["logg"] = logg_std
     final_parameters_std["doppler_shift"] = doppler_shift_std
 
-    if logg > 3:
+    if logg > 30:
         teff, teff_std, logg, logg_std, doppler_shift, doppler_shift_std, _ = fit_teff_logg(labels, payne_coeffs, x_min,
                                                                                          x_max, stellar_rv,
                                                                                          wavelength_obs, flux_obs,

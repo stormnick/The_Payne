@@ -449,20 +449,20 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
     h_line_payne_cut = [20] * len(h_line_cores)
     mg_fe_lines = pd.read_csv("../linemasks/mg_triplet.csv")
     mg_fe_lines = mg_fe_lines['ll']
-    mg_line_cut = [0.5] * len(mg_fe_lines)
-    mg_line_payne_cut = [0.75] * len(mg_fe_lines)
+    mg_line_cut = [1] * len(mg_fe_lines)
+    mg_line_payne_cut = [1.25] * len(mg_fe_lines)
     ca_fe_lines = pd.read_csv("../linemasks/ca_triplet.csv")
     ca_fe_lines = ca_fe_lines['ll']
-    ca_line_cut = [0.75] * len(ca_fe_lines)
-    ca_line_payne_cut = [1] * len(ca_fe_lines)
-    fe_lines = pd.read_csv("../fe_lines_hr_good.csv")
+    ca_line_cut = [1] * len(ca_fe_lines)
+    ca_line_payne_cut = [1.25] * len(ca_fe_lines)
+    fe_lines = pd.read_csv("../linemasks/fe_lines_hr_good.csv")
     fe_lines = list(fe_lines["ll"])
-    fe_line_cut = [0.75] * len(fe_lines)
-    fe_line_payne_cut = [1] * len(fe_lines)
+    fe_line_cut = [1] * len(fe_lines)
+    fe_line_payne_cut = [1.25] * len(fe_lines)
     # combine both
-    logg_lines = list(mg_fe_lines) + list(fe_lines) + list(ca_fe_lines)
+    logg_lines = list(mg_fe_lines) + list(ca_fe_lines) + list(fe_lines)
     p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
-    input_values = [None, None, None, 99] + [0] * (len(labels) - 4) + [None, 0, None]
+    input_values = [None, None, None, None] + [0] * (len(labels) - 4) + [None, 0, None]
     # find location of mg_fe and ca_fe in the labels
     mg_index = labels.index("Mg_Fe")
     ca_index = labels.index("Ca_Fe")
@@ -471,8 +471,8 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
     # set mg and ca to 0
     input_values[mg_index] = None
     input_values[ca_index] = None
-    input_values[o_index] = None
-    input_values[c_index] = None
+    #input_values[o_index] = None
+    #input_values[c_index] = None
 
     lines_to_use = mg_line_cut + ca_line_cut + fe_line_cut
     lines_to_cut = mg_line_payne_cut + ca_line_payne_cut + fe_line_payne_cut
@@ -517,7 +517,7 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
 
 
 def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False, fit_vsini=False, fit_vmac=False):
-    fe_lines = pd.read_csv("../fe_lines_hr_good.csv")
+    fe_lines = pd.read_csv("../linemasks/fe_lines_hr_good.csv")
     fe_lines = list(fe_lines["ll"])
     p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
 
@@ -612,7 +612,10 @@ def scale_dlam(dlam, broadening):
 
 
 def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
-    path = f"../linemasks/{element_to_fit.split('_')[0].lower()}.csv"
+    if element_to_fit == "A_Li":
+        path = f"../linemasks/li.csv"
+    else:
+        path = f"../linemasks/{element_to_fit.split('_')[0].lower()}.csv"
     if os.path.exists(path):
         elements_lines_data = pd.read_csv(path)
         element_lines = list(elements_lines_data['ll'])
@@ -707,9 +710,10 @@ def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, waveleng
 
     if real_labels2 is not None:
         real_labels[0:4] = real_labels2
-        for element in real_labels2_xfe.keys():
-            idx_element = labels.index(element)
-            real_labels[idx_element] = real_labels2_xfe[element]
+        if real_labels2_xfe is not None:
+            for element in real_labels2_xfe.keys():
+                idx_element = labels.index(element)
+                real_labels[idx_element] = real_labels2_xfe[element]
         scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
         payne_fitted_spectra2 = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
                                                                             NN_coeffs=payne_coeffs)

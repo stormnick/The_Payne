@@ -12,7 +12,7 @@ matplotlib.use("MacOSX")
 
 if __name__ == '__main__':
     literature_data = pd.read_csv("../literature_param.csv")
-    payne_data = pd.read_csv("fitted_values_melchiors_v2.csv")
+    payne_data = pd.read_csv("fitted_values_melchiors_v2_test.csv")
 
     # remove .npy from the file names in payne_data
     payne_data["spectraname"] = payne_data["spectraname"].str.replace(".npy", "")
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     # 3. plot each panel
     # -----------------------------------------------------------
     for i, (x, y, xerr, (ref_x, ref_y), title) in enumerate(panels):
-        ax[i].plot(ref_x, ref_y, "r--")  # identity line
+        ax[i].plot(ref_x, ref_y, "g--")  # identity line
         sc = ax[i].scatter(x, y, c=cvals, cmap=cmap, norm=norm, s=14)  # points
 
         # draw coloured error bars one‐by‐one

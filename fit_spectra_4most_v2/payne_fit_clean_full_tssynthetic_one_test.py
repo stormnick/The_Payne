@@ -13,6 +13,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 from payne_fit_clean_full import (fit_teff, fit_logg, fit_feh, fit_one_xfe_element, process_spectra, load_payne,
                                   fit_teff_logg, plot_fitted_payne)
+import os
 
 matplotlib.use("MacOSX")
 # plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyle")
@@ -37,14 +38,14 @@ if __name__ == '__main__':
     # get all filenames in the folder
     snr_to_do = 1000
     folder_spectra = f"/Users/storm/PycharmProjects/payne/ts_nlte_grid_july2024/snr{int(snr_to_do)}/"
-    folder_spectra = f"/Users/storm/PycharmProjects/payne/ts_nlte_grid_apr2024/batch0_nlte_4mostified_v3/"
+    folder_spectra = f"/Users/storm/PhD_2025/spectra_4most/batch0_nlte_4mostified_v3/"
     files = os.listdir(folder_spectra)
     # only take those with "hrs" in it
     files = [file for file in files if f"hrs_snr{snr_to_do}" in file]
 
     fitted_values = pd.DataFrame(columns=["spectraname", *labels, "vsini", "vmac", "doppler_shift"])
 
-    file_to_fit = f"9668.spec_hrs_snr{snr_to_do}.0.npy"
+    file_to_fit = f"19236.spec_hrs_snr{snr_to_do}.0.npy"
 
     for file in files:
         if file != file_to_fit:
@@ -116,6 +117,7 @@ if __name__ == '__main__':
                 elements_to_fit.append(label)
 
         for element_to_fit in elements_to_fit:
+            print(element_to_fit)
             xfe, xfe_std = fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, x_min, x_max,
                                                stellar_rv, wavelength_obs, flux_obs,
                                                wavelength_payne, resolution_val, silent=True)

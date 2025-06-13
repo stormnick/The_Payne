@@ -43,21 +43,29 @@ def calculate_vturb(teff: float, logg: float, met: float) -> float:
     """
     t0 = 5500.
     g0 = 4.
+    tlim = 5000.
+    glim = 3.5
 
-    v_mturb: float = 0
+    delta_logg = logg - g0
 
-    if teff >= 5000.:
-        v_mturb = 1.05 + 2.51e-4 * (teff - t0) + 1.5e-7 * (teff - t0) * (teff - t0) - 0.14 * (logg - g0) - 0.005 * (
-                logg - g0) * (logg - g0) + 0.05 * met + 0.01 * met * met
-    elif teff < 5000. and logg >= 3.5:
-        v_mturb = 1.05 + 2.51e-4 * (teff - t0) + 1.5e-7 * (5250. - t0) * (5250. - t0) - 0.14 * (logg - g0) - 0.005 * (
-                logg - g0) * (logg - g0) + 0.05 * met + 0.01 * met * met
-    elif teff < 5500. and logg < 3.5:
-        v_mturb = 1.25 + 4.01e-4 * (teff - t0) + 3.1e-7 * (teff - t0) * (teff - t0) - 0.14 * (logg - g0) - 0.005 * (
-                logg - g0) * (logg - g0) + 0.05 * met + 0.01 * met * met
+    if logg >= glim:
+        # dwarfs
+        if teff >= tlim:
+            # hot dwarfs
+            delta_t = teff - t0
+        else:
+            # cool dwarfs
+            delta_t = tlim - t0
 
-    if v_mturb <= 0.0:
-        return 1.0
+        v_mturb = (1.05 + 2.51e-4 * delta_t + 1.5e-7 * delta_t**2 - 0.14 * delta_logg - 0.005 * delta_logg**2 +
+                   0.05 * met + 0.01 * met**2)
+
+    elif logg < glim:
+        # giants
+        delta_t = teff - t0
+
+        v_mturb = (1.25 + 4.01e-4 * delta_t + 3.1e-7 * delta_t**2 - 0.14 * delta_logg - 0.005 * delta_logg**2 +
+                   0.05 * met + 0.01 * met**2)
 
     return v_mturb
 
@@ -244,19 +252,19 @@ def get_bounds_and_p0(p0, input_values, def_bounds, labels):
     return p0, columns_to_pop, labels_to_fit, def_bounds
 
 
-def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, fe_lines_to_use, stellar_rv, obs_cut_aa=0.5, payne_cut_aa=0.75):
+def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, lines_to_use, stellar_rv, obs_cut_aa=0.5, payne_cut_aa=0.75):
     # cut so that we only take the lines we want
     masks = []
     masks_payne = []
 
     if type(obs_cut_aa) is not list:
-        obs_cut_aa = [obs_cut_aa] * len(fe_lines_to_use)
+        obs_cut_aa = [obs_cut_aa] * len(lines_to_use)
     if type(payne_cut_aa) is not list:
-        payne_cut_aa = [payne_cut_aa] * len(fe_lines_to_use)
+        payne_cut_aa = [payne_cut_aa] * len(lines_to_use)
 
     wavelength_obs_rv_corrected = wavelength_obs / (1 + (stellar_rv / 299792.))
 
-    for line, obs_cut_aa_one, payne_cut_aa_one in zip(fe_lines_to_use, obs_cut_aa, payne_cut_aa):
+    for line, obs_cut_aa_one, payne_cut_aa_one in zip(lines_to_use, obs_cut_aa, payne_cut_aa):
         mask_one = (wavelength_obs_rv_corrected > line - obs_cut_aa_one) & (wavelength_obs_rv_corrected < line + obs_cut_aa_one)
         masks.append(mask_one)
 
@@ -279,11 +287,12 @@ def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, fe_lines_to_us
 
 def get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv):
     p0 = scale_back([0] * (len(labels)), payne_coeffs[-2], payne_coeffs[-1], label_name=None)
+    #p0[4:] = (len(p0) - 4) * [0.5]
     # add extra 3 0s
     p0 += [3, 3, 0]
 
     input_values = [None] * len(p0)
-    def_bounds = (x_min + [0, 0, -0.1 + stellar_rv], x_max + [100, 100, 0.1 + stellar_rv])
+    def_bounds = (x_min + [0, 0, -150 + stellar_rv], x_max + [100, 100, 150 + stellar_rv])
     return p0, input_values, def_bounds
 
 
@@ -361,7 +370,7 @@ def fit_logg(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, w
         print(f"Fitted doppler shift: {popt[-1]:.3f} +/- {np.sqrt(np.diag(pcov))[-1]:.3f}")
     return float(popt[0]), float(np.sqrt(np.diag(pcov))[0]), float(popt[-1]), float(np.sqrt(np.diag(pcov))[-1])
 
-def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
+def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, do_hydrogen_lines=False, silent=False, p0_input=None):
     # load mg_fe and ca_fe lines
     h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
     h_line_cores = h_line_cores['ll']
@@ -369,16 +378,16 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
     h_line_payne_cut = [20] * len(h_line_cores)
     mg_fe_lines = pd.read_csv("../linemasks/mg_triplet.csv")
     mg_fe_lines = mg_fe_lines['ll']
-    mg_line_cut = [0.5] * len(mg_fe_lines)
-    mg_line_payne_cut = [0.75] * len(mg_fe_lines)
+    mg_line_cut = [1] * len(mg_fe_lines)
+    mg_line_payne_cut = [1.5] * len(mg_fe_lines)
     ca_fe_lines = pd.read_csv("../linemasks/ca_triplet.csv")
     ca_fe_lines = ca_fe_lines['ll']
-    ca_line_cut = [0.5] * len(ca_fe_lines)
-    ca_line_payne_cut = [0.75] * len(ca_fe_lines)
+    ca_line_cut = [1] * len(ca_fe_lines)
+    ca_line_payne_cut = [1.5] * len(ca_fe_lines)
     fe_lines = pd.read_csv("../fe_lines_hr_good.csv")
     fe_lines = list(fe_lines["ll"])
-    fe_line_cut = [0.5] * len(fe_lines)
-    fe_line_payne_cut = [0.75] * len(fe_lines)
+    fe_line_cut = [1] * len(fe_lines)
+    fe_line_payne_cut = [1.5] * len(fe_lines)
     # combine both
     logg_lines = list(mg_fe_lines) + list(fe_lines) + list(ca_fe_lines)
     p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
@@ -393,10 +402,23 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
     input_values[ca_index] = None
     input_values[o_index] = None
     input_values[c_index] = None
+
+    lines_to_use = mg_line_cut + ca_line_cut + fe_line_cut
+    lines_to_cut = mg_line_payne_cut + ca_line_payne_cut + fe_line_payne_cut
+
+    if do_hydrogen_lines:
+        lines_to_use += h_line_cut
+        lines_to_cut += h_line_payne_cut
+        logg_lines += list(h_line_cores)
+
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
+
+    if p0_input is not None:
+        p0 = p0_input
+
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=mg_line_cut + ca_line_cut + fe_line_cut,
-        payne_cut_aa=mg_line_payne_cut+ca_line_payne_cut+fe_line_payne_cut)
+        wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=lines_to_use,
+        payne_cut_aa=lines_to_cut)
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
         wavelength_payne_cut,
@@ -420,7 +442,7 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
         print(f"Fitted teff: {popt[0]:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
         print(f"Fitted logg: {popt[1]:.3f} +/- {np.sqrt(np.diag(pcov))[1]:.3f}")
         print(f"Fitted doppler shift: {popt[-1]:.3f} +/- {np.sqrt(np.diag(pcov))[-1]:.3f}")
-    return float(popt[0]), float(np.sqrt(np.diag(pcov))[0]), float(popt[1]), float(np.sqrt(np.diag(pcov))[1]), float(popt[-1]), float(np.sqrt(np.diag(pcov))[-1])
+    return float(popt[0]), float(np.sqrt(np.diag(pcov))[0]), float(popt[1]), float(np.sqrt(np.diag(pcov))[1]), float(popt[-1]), float(np.sqrt(np.diag(pcov))[-1]), popt
 
 
 def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False, fit_vsini=False, fit_vmac=False):
@@ -449,7 +471,7 @@ def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wa
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
 
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, fe_lines, stellar_rv, obs_cut_aa=0.5, payne_cut_aa=0.75)
+        wavelength_obs, flux_obs, wavelength_payne, fe_lines, stellar_rv, obs_cut_aa=1, payne_cut_aa=1.5)
 
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
@@ -501,7 +523,6 @@ def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wa
     return float(popt[0]), float(np.sqrt(np.diag(pcov))[0]), float(popt[1]), float(np.sqrt(np.diag(pcov))[1]), vsini_value, vsini_error, vmac_value, vmac_error
 
 def scale_dlam(dlam, broadening):
-    return dlam
     # scales dlam where to fit a line with broadening, a rough calculation based on my own
     # done for R = 20 000
     # at 0 broadening scaling ~ 1
@@ -558,7 +579,8 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
         wavelength_payne_cut,
         input_values,
         resolution_val=resolution_val,
-        pixel_limits=combined_mask_payne
+        pixel_limits=combined_mask_payne,
+        flux_obs = flux_obs_cut_to_lines
     )
 
     if not silent:

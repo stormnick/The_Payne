@@ -53,7 +53,7 @@ if __name__ == '__main__':
         h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
         h_line_cores = list(h_line_cores['ll'])
 
-        wavelength_obs, flux_obs = process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5)
+        wavelength_obs, flux_obs = process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.2)
 
         final_parameters = {}
         final_parameters_std = {}

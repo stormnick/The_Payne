@@ -40,7 +40,7 @@ if __name__ == '__main__':
 
     fitted_values = pd.DataFrame(columns=["spectraname", *labels, "vsini", "vmac", "doppler_shift"])
 
-    file_to_fit = "HD189319.npy"
+    file_to_fit = "HD210027.txt"
 
     for file in files:
         if file != file_to_fit:
@@ -51,6 +51,7 @@ if __name__ == '__main__':
         spectra = np.load(f"{folder_spectra}{file}")
         wavelength_obs = continuum[0]
         flux_obs = spectra[1] / continuum[1]
+        np.savetxt(file, np.array([wavelength_obs, flux_obs]).T)
         stellar_rv = 0
 
         start_time = time.perf_counter()
@@ -58,13 +59,17 @@ if __name__ == '__main__':
         h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
         h_line_cores = list(h_line_cores['ll'])
 
-        wavelength_obs, flux_obs = process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.2)
+        wavelength_obs, flux_obs = process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5)
 
         final_parameters = {}
         final_parameters_std = {}
 
         # 1. TEFF
         # fits teff, logg, feh, vmac, rv for h-alpha lines
+        fe_lines = pd.read_csv("../fe_lines_hr_good.csv")
+        fe_lines = list(fe_lines["ll"])
+        h_line_cores += fe_lines
+
         teff, teff_std = fit_teff(labels, payne_coeffs, x_min, x_max, stellar_rv, h_line_cores, wavelength_obs,
                                   flux_obs, wavelength_payne, resolution_val, silent=False)
 
@@ -155,7 +160,8 @@ if __name__ == '__main__':
 
 
         real_labels = final_params
-        #real_labels[0:3] = [3.904,1.06,-0.26]
+        real_labels[0:3] = [3.904,1.06,-0.26]
+        real_labels[7] = -0.7
         scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
         payne_fitted_spectra2 = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
                                                                            NN_coeffs=payne_coeffs, kovalev_alt=True)

@@ -282,7 +282,7 @@ doppler_shift  :      0.082 +/-      0.036"""
     #input_values = (6290.449, 4.6668, -3.7677, 1.1195, None, None, None, None, None, 1.2229, 0, 0)
     #input_values[0:3] = (5777, 4.44)
     input_values[-3:] = (0, None, None)
-    input_values = (5.777, 4.44, None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, None, None)
+    input_values = (5.777, 4.44, None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, None, 0, None)
     #input_values = (5.777, 4.44, None, None, 0, 0, 0, 0, 0, 0, 0, None, None)
     columns_to_pop = []
     for i, input_value in enumerate(input_values):
@@ -364,7 +364,7 @@ doppler_shift  :      0.082 +/-      0.036"""
             print(f"{label:<15}: {value*1000:>10.3f} +/- {std_error*1000:>10.3f}")
     if resolution_val is not None:
         print(f"{'Resolution':<15}: {int(resolution_val):>10}")
-    exit()
+
     doppler_shift = final_params[-1]
     vmac = final_params[-2]
     vrot = final_params[-3]

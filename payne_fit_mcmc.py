@@ -144,8 +144,8 @@ if __name__ == '__main__':
     x_max = list(payne_coeffs[-1])
 
     wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
-    wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/iag_solar_flux.txt", dtype=float, unpack=True)
-    wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/sun_nlte.spec", dtype=float, unpack=True, usecols=(0, 1))
+    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/iag_solar_flux.txt", dtype=float, unpack=True)
+    #wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/sun_nlte.spec", dtype=float, unpack=True, usecols=(0, 1))
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G48-29", dtype=float, unpack=True)
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G64-12", dtype=float, unpack=True)
     #data = np.loadtxt("18Sco_cont_norm.txt", dtype=float, unpack=True)
@@ -186,7 +186,8 @@ if __name__ == '__main__':
     #input_values = (6290.449, 4.6668, -3.7677, 1.1195, None, None, None, None, None, 1.2229, 0, 0)
     #input_values[0:3] = (5777, 4.44)
     #input_values[-3:] = (0, None, None)
-    #input_values = (None, None, None, None, 0, 0, 0, 0, 0, None, None)
+    input_values = (None, None, None, None, 0, 0, 0, 0, 0, None, None)
+    label_names = labels.copy()
     columns_to_pop = []
     for i, input_value in enumerate(input_values):
         if input_value is not None:
@@ -198,16 +199,17 @@ if __name__ == '__main__':
             # remove that column
             columns_to_pop.append(i)
 
-    # remove the columns from p0 and def_bounds
-    for i in sorted(columns_to_pop, reverse=True):
-        p0.pop(i)
-        def_bounds[0].pop(i)
-        def_bounds[1].pop(i)
-
-    label_names = labels.copy()
     label_names.append('vrot')
     label_names.append('vmac')
     label_names.append('doppler_shift')
+
+    # remove the columns from p0 and def_bounds
+    for i in sorted(columns_to_pop, reverse=True):
+        p0.pop(i)
+        label_names.pop(i)
+        def_bounds[0].pop(i)
+        def_bounds[1].pop(i)
+
 
     labels_to_fit = [True] * (len(labels) + 3)
     for i, input_value in enumerate(input_values):
@@ -226,7 +228,7 @@ if __name__ == '__main__':
     # 5. Set up the sampler
     ndim = len(p0)
     nwalkers = 32
-    pos = p0 + 1e-4 * np.random.randn(nwalkers, ndim)
+    pos = p0 + 0.5 * np.random.randn(nwalkers, ndim)
 
     flux_err = np.ones_like(flux_obs) * 0.01
 
@@ -238,18 +240,20 @@ if __name__ == '__main__':
     )
 
     # 6. Run MCMC
-    nsteps = 5000
+    nsteps = 7000
     sampler.run_mcmc(pos, nsteps, progress=True)
 
     # 7. Get samples (discard burn-in, thin to reduce autocorrelation)
-    samples = sampler.get_chain(discard=1000, thin=10, flat=True)
+    samples = sampler.get_chain(discard=4000, thin=10, flat=True)
 
     labels.append('vrot')
     labels.append('vmac')
     labels.append('doppler_shift')
 
+
+
     # 8. Corner plot
-    fig = corner.corner(samples, labels=labels, truths=p0)
+    fig = corner.corner(samples, labels=label_names, truths=p0)
     plt.savefig("corner_plot.png", dpi=300)
     plt.show()
 
@@ -263,7 +267,7 @@ if __name__ == '__main__':
         mcmc_results.append((median, errm, errp))
 
     for i, (med, m_err, p_err) in enumerate(mcmc_results):
-        print(f"Parameter {labels[i]} = {med:.3f} (+{p_err:.3f}/-{m_err:.3f})")
+        print(f"Parameter {label_names[i]} = {med:.3f} (+{p_err:.3f}/-{m_err:.3f})")
 
     exit()
 

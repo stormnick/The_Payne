@@ -9,10 +9,14 @@ def leaky_relu(z):
     return z*(z > 0) + 0.01*z*(z < 0)
 
 def relu(z):
+    #return silu(z)
     return z*(z > 0)
 
 def sigmoid(z):
     return 1/(1 + np.exp(-z))
+
+def silu(z):
+    return z * sigmoid(z)
 
 
 def get_spectrum_from_neural_net(scaled_labels, NN_coeffs, pixel_limits=None):

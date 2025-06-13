@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import corner
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
@@ -53,7 +54,7 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
         vmac = spectra_params[-2]
         doppler_shift = spectra_params[-1]
 
-        fit_vmac, fit_rotation = True, False
+        fit_vmac, fit_rotation = False, False
 
         real_labels = spectra_params[:-3]
 
@@ -100,14 +101,14 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
             rotation = vrot
 
         chi_squared = res.fun
-        print("after fit:", chi_squared)
+        print(f"after fit: vmac={macroturb:.2f}, chisqr={chi_squared:.5f}")
 
-        if macroturb > 0:
-           wavelength_payne_, spec_payne = conv_macroturbulence(wavelength_payne_, spec_payne, vmac)
-        if rotation > 0:
-           wavelength_payne_, spec_payne = conv_rotation(wavelength_payne_, spec_payne, vrot)
         if resolution_val is not None:
            wavelength_payne_, spec_payne = conv_res(wavelength_payne_, spec_payne, resolution_val)
+        if macroturb > 0:
+           wavelength_payne_, spec_payne = conv_macroturbulence(wavelength_payne_, spec_payne, macroturb)
+        if rotation > 0:
+           wavelength_payne_, spec_payne = conv_rotation(wavelength_payne_, spec_payne, rotation)
         wavelength_payne_ = wavelength_payne_ * (1 + (rv / 299792.))
 
         f_interp = interp1d(
@@ -126,7 +127,7 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
 
         # calculate chi-squared
         chi_squared = np.sum((interpolated_spectrum - flux_obs) ** 2)
-        print(chi_squared)
+        print(f"teff={real_labels[0]*1000:.2f}, logg={real_labels[1]:.2f}, feh={real_labels[2]:.2f}, chisqr={chi_squared:.5f}")
 
         return interpolated_spectrum
 
@@ -482,7 +483,7 @@ if __name__ == '__main__':
     x_max = list(payne_coeffs[-1])
 
     wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
-    wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/iag_solar_flux.txt", dtype=float, unpack=True)
+    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/iag_solar_flux.txt", dtype=float, unpack=True)
     #wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/sun_nlte.spec", dtype=float, unpack=True, usecols=(0, 1))
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G48-29", dtype=float, unpack=True)
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G64-12", dtype=float, unpack=True)
@@ -490,16 +491,17 @@ if __name__ == '__main__':
     #wavelength_obs, flux_obs = data[:, 0], data[:, 1]
     #wavelength_obs, flux_obs = np.loadtxt("ADP_18sco_snr396_HARPS_17.707g_2.norm", dtype=float, unpack=True, usecols=(0, 2), skiprows=1)
     #wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/synthetic_data_sun_nlte_full.txt", dtype=float, unpack=True, usecols=(0, 1))
-    wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/diff_stellar_spectra_MB/HARPS_HD122563.txt", dtype=float, unpack=True, usecols=(0, 1))
+    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/diff_stellar_spectra_MB/HARPS_HD122563.txt", dtype=float, unpack=True, usecols=(0, 1))
+    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G64-12", dtype=float, unpack=True)
 
     mask = (flux_obs > 0.0) & (flux_obs < 1.2)
     wavelength_obs = wavelength_obs[mask]
     flux_obs = flux_obs[mask]
 
     # mask H-line cores
-    #h_alpha_mask = (wavelength_obs < 6562.8 - 0.5) | (wavelength_obs > 6562.8 + 0.5)
-    #wavelength_obs = wavelength_obs[h_alpha_mask]
-    #flux_obs = flux_obs[h_alpha_mask]
+    h_alpha_mask = (wavelength_obs < 6562.8 - 0.5) | (wavelength_obs > 6562.8 + 0.5)
+    wavelength_obs = wavelength_obs[h_alpha_mask]
+    flux_obs = flux_obs[h_alpha_mask]
 
     resolution_val = None
 
@@ -509,11 +511,11 @@ if __name__ == '__main__':
 
     #p0 = [7.777, 2.94, 0.0, 1.5, -2., -2., -2., -2, 0, 3, 0]
     #p0 = [6.777, 4.54, 0.0, 1.0] + (len(labels) - 4) * [0] + [0, 0, 0]
-    p0 = [5.777, 4.44, 0.0, 1.0] + (len(labels) - 4) * [0]
+    p0 = [7.777, 1.44, 0.0, 1.0] + (len(labels) - 4) * [0] + [0, 0, 0]
 
-    p0 = scale_back([0] * (len(labels)), payne_coeffs[-2], payne_coeffs[-1], label_name=None)
+    #p0 = scale_back([0] * (len(labels)), payne_coeffs[-2], payne_coeffs[-1], label_name=None)
     # add extra 3 0s
-    p0 += [3, 3, 0]
+    #p0 += [3, 3, 0]
 
     #def_bounds = ([3.5, 0, -4, 0.5, -3, -3, -3, -3, 0, 0, -20], [8, 5, 0.5, 3, 3, 3, 3, 3, 1e-5, 15, 20])
     def_bounds = (x_min + [0, 0, -10 + p0[-1]], x_max + [15, 15, 10 + p0[-1]])
@@ -524,7 +526,8 @@ if __name__ == '__main__':
     #input_values = (6290.449, 4.6668, -3.7677, 1.1195, None, None, None, None, None, 1.2229, 0, 0)
     #input_values[0:3] = (5777, 4.44)
     input_values[-3:] = (0, None, None)
-    input_values = (None, None, None, None, 0, 0, 0, 0, 0, None, None)
+    input_values = (None, None, None, None, 0, 0, 0, 0, 0, 0, 0)
+    input_values = (None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0)
     columns_to_pop = []
     for i, input_value in enumerate(input_values):
         if input_value is not None:
@@ -570,6 +573,22 @@ if __name__ == '__main__':
         p0=p0,
         bounds=def_bounds,
     )
+
+    #num_samples = 10000
+    #samples = np.random.multivariate_normal(mean=popt, cov=pcov, size=num_samples)
+
+    ## 4. Make the corner plot
+    ## --------------------------------------------------
+    #figure = corner.corner(
+    #    samples,
+    #    labels=["teff", "logg", "feh", "vmic"],  # Replace with names of your parameters
+    #    quantiles=[0.16, 0.5, 0.84],
+    #    show_titles=True,
+    #    title_fmt=".3f",
+    #    title_kwargs={"fontsize": 12}
+    #)
+
+    #plt.show()
 
     print("Done fitting.")
 
