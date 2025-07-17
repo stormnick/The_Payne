@@ -24,6 +24,8 @@ if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_2025-06-11-08-02-05.npz"
     #path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_bigpayne_2025-06-09-16-42-57.npz"
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-12-10-27-38.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-13-09-52-45.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-15-00-35-41.npz"
 
     payne_coeffs, wavelength_payne, labels = load_payne(path_model)
     x_min = list(payne_coeffs[-2])

@@ -9,7 +9,6 @@ def leaky_relu(z):
     return z*(z > 0) + 0.01*z*(z < 0)
 
 def relu(z):
-    #return silu(z)
     return z*(z > 0)
 
 def sigmoid(z):
@@ -44,10 +43,10 @@ def get_spectrum_from_neural_net(scaled_labels, NN_coeffs, pixel_limits=None):
     # First hidden layer
     inside = np.einsum('ij,j->i', w_array_0, scaled_labels) + b_array_0
 
-    middle = np.einsum('ij,j->i', w_array_1, relu(inside)) + b_array_1
+    middle = np.einsum('ij,j->i', w_array_1, silu(inside)) + b_array_1
 
-    outside = np.einsum('ij,j->i', w_array_2, relu(middle)) + b_array_2
-    hidden_act = relu(outside)
+    outside = np.einsum('ij,j->i', w_array_2, silu(middle)) + b_array_2
+    hidden_act = silu(outside)
 
     final_act = sigmoid
 

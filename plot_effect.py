@@ -16,6 +16,9 @@ matplotlib.use("MacOSX")
 def relu(x):
     return np.maximum(x, 0.0)
 
+def silu(x):
+    return x * sigmoid(x)
+
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 
@@ -26,10 +29,10 @@ def compute_jacobian_once(labels, W0, b0, W1, b1, W2, b2):
     """
     # ---------- forward pass ----------
     z0 = W0 @ labels + b0               # (H1,)
-    a0 = relu(z0)
+    a0 = silu(z0)
 
     z1 = W1 @ a0 + b1                   # (H2,)
-    a1 = relu(z1)
+    a1 = silu(z1)
 
     z2 = W2 @ a1 + b2                   # (n_pixels,)
     y  = sigmoid(z2)

@@ -96,18 +96,22 @@ if __name__ == '__main__':
 
     #print(merged_data["source"])
     # only leave merged_data that are ["source"] in ["GES+batch1", "Ruchti"]
-    #merged_data = merged_data[merged_data["source"].isin(["GES+batch1"])]
+    merged_data = merged_data[merged_data["source"].isin(["GES+batch1"])]
 
     # load tsfitpy data
     main_folder = "/Users/storm/PhD_2025/02.22 Payne/fitted_spectra_tsfitpy/"
     folders = os.listdir(main_folder)
     folders.remove(".DS_Store")
+    folders.remove("v1")
+    folders.remove("v2")
+    folders.remove("extra3")
+    #folders.remove("v3")
     tsfitpy_data = pd.DataFrame()
     for folder in folders:
         folder_path = os.path.join(main_folder, folder)
-        if os.path.exists(os.path.join(folder_path, "average_abundance.csv")):
-            if os.path.exists(os.path.join(folder_path, "average_abundance_2.csv")):
-                new_data = pd.read_csv(os.path.join(folder_path, "average_abundance_2.csv"))
+        if os.path.exists(os.path.join(folder_path, "average_abundance.csv")) or os.path.exists(os.path.join(folder_path, "average_abundance_v2.csv")):
+            if os.path.exists(os.path.join(folder_path, "average_abundance_v2.csv")):
+                new_data = pd.read_csv(os.path.join(folder_path, "average_abundance_v2.csv"))
             else:
                 new_data = pd.read_csv(os.path.join(folder_path, "average_abundance.csv"))
             columns = new_data.columns
@@ -118,15 +122,20 @@ if __name__ == '__main__':
                     break
             if element == "":
                 element = "Fe_H"
-            columns = ["specname", element, f"{element}_err"]
+            columns = ["specname", element, f"{element}_err", "vsini"]
             new_data = new_data[columns]
+            # rename "vsini" to f"{element}_vsini_tsfitpy"
+            new_data.rename(columns={"vsini": f"{element}_vsini"}, inplace=True)
+            if element == "Eu_Fe":
+                for row in new_data.iterrows():
+                    print(row[1]["specname"], row[1][element], row[1][f"{element}_err"], row[1][f"{element}_vsini"])
             if tsfitpy_data.empty:
                 tsfitpy_data = new_data
             else:
                 # concat on specname
                 tsfitpy_data = pd.merge(tsfitpy_data, new_data, on="specname", how="outer", suffixes=("", "_new"))
-    tsfitpy_data.to_csv("tsfitpy_data.csv", index=False)
-
+    ###tsfitpy_data.to_csv("tsfitpy_data.csv", index=False)
+    print(tsfitpy_data)
     # merge tsfitpy_data with merged_data on spectraname
     tsfitpy_data.rename(columns={"specname": "spectraname_og"}, inplace=True)
     # each column add "_tsfitpy"
@@ -134,9 +143,14 @@ if __name__ == '__main__':
     merged_data = pd.merge(merged_data, tsfitpy_data, on="spectraname_og", how="left", suffixes=("", "_tsfitpy"))
     merged_data["A_Li_tsfitpy"] = merged_data["Li_Fe_tsfitpy"] + merged_data["feh"] + 1.05
     merged_data.drop(columns=["Li_Fe_tsfitpy"], inplace=True)
-    merged_data.to_csv("merged_data_with_tsfitpy.csv", index=False)
+    merged_data.to_csv("merged_data_with_tsfitpy_new.csv", index=False)
 
-    if False:
+    # set any merged_data["A_Li"] < 0 to NaN
+    merged_data["A_Li_tsfitpy"] = np.where(merged_data["A_Li_tsfitpy"] < 0, np.nan, merged_data["A_Li_tsfitpy"])
+    #merged_data["O_Fe"] = np.where(merged_data["O_Fe"] >= 1.25, np.nan, merged_data["O_Fe"])
+
+
+    if True:
         fig, ax = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
 
         # -----------------------------------------------------------
@@ -298,13 +312,7 @@ if __name__ == '__main__':
         # -----------------------------------------------------------
         # 4. single colour-bar on the right
         # -----------------------------------------------------------
-        fig.colorbar(
-            plt.cm.ScalarMappable(norm=norm, cmap=cmap),
-            ax=ax.ravel().tolist(),
-            location="right",
-            label=r"$\Delta\mathrm{[Fe/H]}\;(\mathrm{TSFitPy}-\mathrm{Payne})$"
-        )
-
+        plt.savefig("../plots/payne_stellar_param_comparison.pdf", bbox_inches='tight')
         plt.show()
 
     # find how many elements we can plot
@@ -322,8 +330,19 @@ if __name__ == '__main__':
     fig, ax = plt.subplots(rows, columns, figsize=(rows * 3, columns * 2), constrained_layout=True)
     ax = ax.flatten()  # flatten the 2D array to 1D for easier indexing
     for i, element in enumerate(elements_to_plot):
-        x = merged_data[element]
-        y = merged_data[element] - merged_data[element.replace("_tsfitpy", "")]
+        x = np.asarray(merged_data[element])
+        y = np.asarray(merged_data[element] - merged_data[element.replace("_tsfitpy", "")])
+
+        x_std = merged_data[f"{element.replace('_tsfitpy', '')}_std"]
+        # find any with std < -90, and get their indices
+        indices = np.where(x_std < -90)[0]
+        # remove any x, y where x_std < -90
+        x = np.delete(x, indices)
+        y = np.delete(y, indices)
+        # find any nan in y, and get their indices
+        indices = np.where(np.isnan(y))[0]
+        x = np.delete(x, indices)
+        y = np.delete(y, indices)
 
         #ax[i].plot([-4, 0.5], [-4, 0.5], "g--")  # identity line
         sc = ax[i].scatter(x, y, c='k', s=14)  # points
@@ -348,10 +367,24 @@ if __name__ == '__main__':
     fig, ax = plt.subplots(rows, columns, figsize=(rows * 3, columns * 2), constrained_layout=True)
     ax = ax.flatten()  # flatten the 2D array to 1D for easier indexing
     for i, element in enumerate(elements_to_plot):
-        x = merged_data["feh"]
-        y = merged_data[element] - merged_data[element.replace("_tsfitpy", "")]
+        x = np.asarray(merged_data["feh"])
+        y = np.asarray(merged_data[element] - merged_data[element.replace("_tsfitpy", "")])
+
+        x_std = merged_data[f"{element.replace('_tsfitpy', '')}_std"]
+        # find any with std < -90, and get their indices
+        indices = np.where(x_std < -90)[0]
+        # remove any x, y where x_std < -90
+        x = np.delete(x, indices)
+        y = np.delete(y, indices)
+        # find any nan in y, and get their indices
+        indices = np.where(np.isnan(y))[0]
+        x = np.delete(x, indices)
+        y = np.delete(y, indices)
 
         #ax[i].plot([-4, 0.5], [-4, 0.5], "g--")  # identity line
+        # horisontal lines at y = 0, -0.2, 0.2
+        ax[i].hlines([0, -0.2, 0.2], -3.2, 0.5, colors='k', linestyles='dashed', linewidth=0.8)
+
         sc = ax[i].scatter(x, y, c='k', s=14)  # points
 
         ## draw coloured error bars one‐by‐one
@@ -359,9 +392,56 @@ if __name__ == '__main__':
         #    ax[i].errorbar([xi], [yi], fmt="none",
         #                   capsize=3, linewidth=0.8, ecolor='k')
 
-        ax[i].set_xlabel(f"[Fe/H] (Payne)")
+        ax[i].set_xlabel(f"[Fe/H]")
         ax[i].set_ylabel(f"{rename_element(element)} (TSFitPy - Payne)")
+        ax[i].set_title(f"bias={np.mean(y):.3f}, std={np.std(y):.3f}", fontsize=10)
+
+        # ylim
+        ax[i].set_ylim(-0.4, 0.4)
+
+
+    plt.show()
+
+
+    columns = 4
+    rows = len(elements_to_plot) // columns + 1
+    rows = 3
+
+    # subplot
+    fig, ax = plt.subplots(rows, columns, figsize=(rows * 3, columns * 2), constrained_layout=True)
+    ax = ax.flatten()  # flatten the 2D array to 1D for easier indexing
+    for i, element in enumerate(elements_to_plot):
+        x = np.asarray(merged_data["feh"])
+        y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")])
+        y2 = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0)
+
+        x_std = merged_data[f"{element.replace('_tsfitpy', '')}_std"]
+        # find any with std < -90, and get their indices
+        indices = np.where(x_std < -90)[0]
+        # remove any x, y where x_std < -90
+        x = np.delete(x, indices)
+        y = np.delete(y, indices)
+        y2 = np.delete(y2, indices)
+        # find any nan in y, and get their indices
+        indices = np.where(np.isnan(y))[0]
+        x = np.delete(x, indices)
+        y = np.delete(y, indices)
+        y2 = np.delete(y2, indices)
+
+        #ax[i].plot([-4, 0.5], [-4, 0.5], "g--")  # identity line
+        sc = ax[i].scatter(x, y, c='k', s=14)  # points
+        sc2 = ax[i].scatter(x, y2, c='r', s=14)
+
+        ## draw coloured error bars one‐by‐one
+        #for xi, yi in zip(x, y):
+        #    ax[i].errorbar([xi], [yi], fmt="none",
+        #                   capsize=3, linewidth=0.8, ecolor='k')
+
+        ax[i].set_xlabel(f"[Fe/H] (Payne)")
+        ax[i].set_ylabel(f"{rename_element(element)} (Payne)")
         ax[i].set_title(f"bias={np.mean(y):.3f}, std={np.std(y):.3f}")
+        ax[i].set_ylim(-0.5,1)
+        ax[i].set_xlim(-3.2, 0.5)
 
-
+    plt.savefig("../plots/tsfitpy_payne_gce_comparison.pdf", bbox_inches='tight')
     plt.show()

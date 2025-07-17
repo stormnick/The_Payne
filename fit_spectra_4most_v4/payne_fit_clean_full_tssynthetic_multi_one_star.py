@@ -95,10 +95,12 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_coeffs, wavelength_payne, l
         xfe, xfe_std = fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, x_min, x_max,
                                            stellar_rv, wavelength_obs, flux_obs,
                                            wavelength_payne, resolution_val, silent=True)
-
+        index = labels.index(element_to_fit)
         if xfe < -90:
-            index = labels.index(element_to_fit)
-            final_parameters[element_to_fit] = x_min[index]
+            final_parameters[element_to_fit] = 0
+            final_parameters_std[element_to_fit] = -99
+        elif np.abs(xfe - x_max[index]) <= 0.02:
+            final_parameters[element_to_fit] = x_max[index] - (x_max[index] - x_min[index]) / 3
             final_parameters_std[element_to_fit] = -99
         else:
             final_parameters[element_to_fit] = xfe
@@ -119,7 +121,7 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_coeffs, wavelength_payne, l
     else:
         filename_to_save = file
 
-    plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels, None, real_labels2=[4.665, 1.32, -2.657, 1.58])
+    plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels, None)#, real_labels2=[4.665, 1.32, -2.657, 1.58])
 
     # add to fitted_values
     new_row_df = pd.DataFrame(
@@ -141,7 +143,10 @@ if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_2025-06-10-10-09-41.npz"
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_2025-06-10-14-52-32.npz"
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_2025-06-11-08-02-05.npz"
-    #path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-12-10-27-38.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-12-10-27-38.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-13-09-52-45.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-15-00-35-41.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-16-06-28-26.npz"
 
     payne_coeffs, wavelength_payne, labels = load_payne(path_model)
     x_min = list(payne_coeffs[-2])
@@ -166,7 +171,8 @@ if __name__ == '__main__':
     start_fit_time = perf_counter()
     print(f"Fitting {len(files)} spectra... starting at {time.strftime('%H:%M:%S', time.localtime())}")
 
-    file_to_fit = "NARVAL_HD84937.txt"
+    file_to_fit = "UVES_alfTau"
+    file_to_fit = "UVES-POP_Procyon"
 
     for file in files:
         if file_to_fit in file:

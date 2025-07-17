@@ -32,7 +32,11 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_coeffs, wavelength_payne, l
     x_max = list(payne_coeffs[-1])
     print(f"Fitting {file}")
 
-    wavelength_obs, flux_obs = np.loadtxt(f"{folder}/{file}", usecols=(0,1), unpack=True, dtype=float)
+    try:
+        wavelength_obs, flux_obs = np.loadtxt(f"{folder}/{file}", usecols=(0,1), unpack=True, dtype=float)
+    except UnicodeDecodeError:
+        print(f"Error reading {file}. Skipping...")
+        raise ValueError(f"Could not read file {file}. Please check the file format or encoding.")
     start_time = time.perf_counter()
     h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
     h_line_cores = list(h_line_cores['ll'])
@@ -79,9 +83,16 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_coeffs, wavelength_payne, l
         xfe, xfe_std = fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, x_min, x_max,
                                            stellar_rv, wavelength_obs, flux_obs,
                                            wavelength_payne, resolution_val, silent=True)
-
-        final_parameters[element_to_fit] = xfe
-        final_parameters_std[element_to_fit] = xfe_std
+        index = labels.index(element_to_fit)
+        if xfe < -90:
+            final_parameters[element_to_fit] = 0
+            final_parameters_std[element_to_fit] = -99
+        elif np.abs(xfe - x_max[index]) <= 0.02:
+            final_parameters[element_to_fit] = x_max[index] - (x_max[index] - x_min[index]) / 3
+            final_parameters_std[element_to_fit] = -99
+        else:
+            final_parameters[element_to_fit] = xfe
+            final_parameters_std[element_to_fit] = xfe_std
     print(f"Fitted {file} in {time.perf_counter() - start_time:.2f} seconds")
     # PRINT RESULTS
     for label in label_names:
@@ -112,7 +123,9 @@ def _wrapper(path, folder, payne_coeffs, wavelength_payne, labels, label_names, 
 
 if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_2025-06-11-08-02-05.npz"
-    elements_to_refit = ["A_Li"]
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-16-06-28-26.npz"
+    elements_to_refit = ["O_Fe", "Mg_Fe", "Al_Fe", "Cr_Fe", "Na_Fe", "Ni_Fe", "Si_Fe", "Ca_Fe", "Ba_Fe", "Mn_Fe", "Co_Fe", "Sr_Fe", "Eu_Fe", "Ti_Fe", "Y_Fe", "A_Li"]
+    elements_to_refit = ["Mn_Fe"]
     payne_data = pd.read_csv("fitted_benchmark_extended_refitted.csv")
 
     payne_coeffs, wavelength_payne, labels = load_payne(path_model)

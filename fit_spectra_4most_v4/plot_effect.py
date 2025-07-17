@@ -82,7 +82,7 @@ def load_payne(path_model):
 
 
 if __name__ == '__main__':
-    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_2025-06-09-10-53-13.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-16-06-28-26.npz"
     payne_coeffs, wavelength, labels = load_payne(path_model)
     w_array_0, w_array_1, w_array_2, w_array_3, b_array_0, b_array_1, b_array_2, b_array_3, x_min, x_max = payne_coeffs
 

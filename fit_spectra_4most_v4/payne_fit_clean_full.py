@@ -270,13 +270,14 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
 
         # debug: preview the interpolated spectrum
         # calculate chi-squared
-        #chi_squared = np.sum((interpolated_spectrum - flux_obs) ** 2)
-        #print(params_to_fit[0], chi_squared)
-        #plt.figure(figsize=(14, 7))
-        #plt.title(params_to_fit[0])
-        #plt.scatter(wavelength_obs, flux_obs, s=3, color='k')
-        #plt.plot(wavelength_obs, interpolated_spectrum, color='r')
-        #plt.show()
+        if flux_obs is not None and False:
+            chi_squared = np.sum((interpolated_spectrum - flux_obs) ** 2)
+            print(params_to_fit[0], chi_squared)
+            plt.figure(figsize=(14, 7))
+            plt.title(params_to_fit[0])
+            plt.scatter(wavelength_obs, flux_obs, s=3, color='k')
+            plt.scatter(wavelength_obs, interpolated_spectrum, s=2, color='r')
+            plt.show()
 
         return interpolated_spectrum
 
@@ -333,6 +334,11 @@ def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, lines_to_use, 
         obs_cut_aa = [obs_cut_aa] * len(lines_to_use)
     if type(payne_cut_aa) is not list:
         payne_cut_aa = [payne_cut_aa] * len(lines_to_use)
+
+    if len(obs_cut_aa) == 1:
+        obs_cut_aa = obs_cut_aa * len(lines_to_use)
+    if len(payne_cut_aa) == 1:
+        payne_cut_aa = payne_cut_aa * len(lines_to_use)
 
     wavelength_obs_rv_corrected = wavelength_obs / (1 + (stellar_rv / 299792.))
 
@@ -620,12 +626,12 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
         elements_lines_data = pd.read_csv(path)
         element_lines = list(elements_lines_data['ll'])
         if "dlam" in elements_lines_data.columns:
-            dlam = float(elements_lines_data['dlam'][0])
+            dlam = elements_lines_data['dlam'].tolist()
         else:
-            dlam = 0.5
+            dlam = [0.5]
     else:
         element_lines = [5000]
-        dlam = 2000
+        dlam = [2000]
 
     dlam = scale_dlam(dlam, final_parameters["vsini"])
 
@@ -646,7 +652,7 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
     p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
 
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, element_lines, stellar_rv, obs_cut_aa=dlam, payne_cut_aa=dlam * 1.5)
+        wavelength_obs, flux_obs, wavelength_payne, element_lines, stellar_rv, obs_cut_aa=list(dlam), payne_cut_aa=list(np.asarray(dlam) * 1.5))
 
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
@@ -732,8 +738,18 @@ def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, waveleng
                                                                      resolution_val)
 
 
+    # cut wavelength_obs to the payne windows
+    windows = [[3926, 4355], [5160, 5730], [6100, 6790]]
+    wavelength_obs_cut = []
+    flux_obs_cut = []
+    for window in windows:
+        mask = (wavelength_obs > window[0]) & (wavelength_obs < window[1])
+        wavelength_obs_cut.extend(wavelength_obs[mask])
+        flux_obs_cut.extend(flux_obs[mask])
+
+
     plt.figure(figsize=(18, 6))
-    plt.scatter(wavelength_obs, flux_obs, label="Observed", s=3, color='k')
+    plt.scatter(wavelength_obs_cut, flux_obs_cut, label="Observed", s=3, color='k')
     plt.plot(wavelength_payne_plot * (1 + (doppler_shift / 299792.)), payne_fitted_spectra, label="Payne",
              color='r')
     if real_labels2 is not None:
