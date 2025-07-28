@@ -12,11 +12,122 @@ from convolve import *
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 import os
+from dataclasses import dataclass, field, replace
 
 matplotlib.use("MacOSX")
 # plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyle")
 
 # Created by storm at 03.03.25
+
+@dataclass(slots=True)
+class PayneParams:
+    labels: list[str]
+    payne_coeffs: tuple
+    wavelength_payne: np.ndarray
+    x_min: list
+    x_max: list
+    resolution_val: float | None = None
+
+@dataclass(slots=True)
+class Parameter:
+    label_name: str
+    value: float
+    std: float = -99            # default: not set
+    fit: bool = True            # default: include in optimisation
+    min_value: float | None = None
+    max_value: float | None = None
+
+    def bounds(self) -> tuple[float, float]:
+        return self.min_value, self.max_value
+
+@dataclass(slots=True)
+class LSQSetup:
+    p0: list[float]
+    input_values: list[float | None]
+    bounds: tuple[list[float], list[float]]
+    labels: list[str]               # labels actually being fitted, same order as p0
+
+@dataclass(slots=True)
+class StellarParameters:
+    teff: Parameter
+    logg: Parameter
+    feh:  Parameter
+    vmic: Parameter
+    vsini: Parameter
+    vmac: Parameter
+    doppler_shift: Parameter
+    abundances: dict[str, Parameter] = field(default_factory=dict)
+
+    _core_map = {
+        "teff": "teff",  # label → attribute name
+        "logg": "logg",
+        "feh": "feh",
+        "vmic": "vmic",
+        "vsini": "vsini",
+        "vmac": "vmac",
+        "doppler_shift": "doppler_shift",
+    }
+
+    def build_lsq_inputs(
+        self,
+        payne_labels,
+        labels_to_fit
+    ) -> LSQSetup:
+        """
+        Assemble the vectors required by `scipy.optimize.curve_fit`.
+
+        Parameters
+        ----------
+        payne_labels
+            Full label list used by The Payne *excluding* vsini/vmac/doppler_shift.
+        labels_to_fit
+            Iterable of label names that should be optimised.
+
+        Returns
+        -------
+        LSQSetup
+            p0, input vector (with None placeholders), per-parameter bounds,
+            and the list of labels whose order matches p0.
+        """
+        # (1) final label sequence ------------------------------------------------
+        labels = list(payne_labels) + ["vsini", "vmac", "doppler_shift"]
+
+        # (2) fast lookup helpers -------------------------------------------------
+        fit_set: set[str] = set(labels_to_fit)
+        p0: list[float] = []
+        pmin: list[float] = []
+        pmax: list[float] = []
+        input_values: list[float | None] = []
+        fitted_labels: list[str] = []
+
+        # (3) build vectors -------------------------------------------------------
+        for lab in labels:
+            # select the Parameter object
+            if lab in self._core_map:
+                param: Parameter = getattr(self, self._core_map[lab])
+            else:
+                # safe even if abundances is regular dict: key order comes from labels[]
+                param = self.abundances.get(lab)
+                if param is None:
+                    raise KeyError(f"StellarParameters missing abundance '{lab}'")
+
+            # decide whether we fit this label
+            is_fitted = param.fit and lab in fit_set
+            input_values.append(None if is_fitted else param.value)
+
+            if is_fitted:
+                p0.append(param.value)
+                lo, hi = param.bounds()
+                pmin.append(lo if lo is not None else -np.inf)
+                pmax.append(hi if hi is not None else  np.inf)
+                fitted_labels.append(lab)
+
+        return LSQSetup(
+            p0=p0,
+            input_values=input_values,
+            bounds=(pmin, pmax),
+            labels=fitted_labels,
+        )
 
 def process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5, extra_payne_cut=10):
     """
@@ -302,7 +413,7 @@ def scale_back(x, x_min, x_max, label_name=None):
     return list(return_value)
 
 
-def get_bounds_and_p0(p0, input_values, def_bounds, labels):
+def get_bounds_and_p0(p0, input_values, def_bounds):
     columns_to_pop = []
     for i, input_value in enumerate(input_values):
         if input_value is not None:
@@ -317,12 +428,7 @@ def get_bounds_and_p0(p0, input_values, def_bounds, labels):
         def_bounds[0].pop(i)
         def_bounds[1].pop(i)
 
-    labels_to_fit = [True] * (len(labels) + 3)
-    for i, input_value in enumerate(input_values):
-        if input_value is not None:
-            labels_to_fit[i] = False
-
-    return p0, columns_to_pop, labels_to_fit, def_bounds
+    return p0, def_bounds
 
 
 def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, lines_to_use, stellar_rv, obs_cut_aa=0.5, payne_cut_aa=0.75):
@@ -363,91 +469,41 @@ def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, lines_to_use, 
 
     return wavelength_obs_cut_to_lines_, flux_obs_cut_to_lines_, wavelength_payne_cut_, combined_mask_payne_
 
-def get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv):
+def get_default_p0_guess(labels, payne_coeffs, x_min, x_max):
     p0 = scale_back([0] * (len(labels)), payne_coeffs[-2], payne_coeffs[-1], label_name=None)
-    #p0[4:] = (len(p0) - 4) * [0.5]
+    p0[4:] = (len(p0) - 4) * [0.0]  # set all other parameters to 0, except the first four
     # add extra 3 0s
     p0 += [3, 3, 0]
 
     input_values = [None] * len(p0)
-    def_bounds = (x_min + [0, 0, -150 + stellar_rv], x_max + [100, 100, 150 + stellar_rv])
+    def_bounds = (x_min + [0, 0, -5], x_max + [100, 100, 5])
     return p0, input_values, def_bounds
 
+def create_default_stellar_parameters(payne_parameters: PayneParams):
+    p0 = scale_back([0] * (len(payne_parameters.labels)), payne_parameters.x_min, payne_parameters.x_max)
 
-def fit_teff(labels, payne_coeffs, x_min, x_max, stellar_rv, teff_lines_to_use, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
-    p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
-    input_values = [None, None, None, 99] + [0] * (len(labels) - 4) + [None, 0, None]
-    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
-    wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, teff_lines_to_use, stellar_rv, obs_cut_aa=0.75, payne_cut_aa=1)
-    model_func = make_model_spectrum_for_curve_fit(
-        payne_coeffs,
-        wavelength_payne_cut,
-        input_values,
-        resolution_val=resolution_val,
-        pixel_limits=combined_mask_payne
-    )
-    if not silent:
-        print("Fitting...")
-        time_start = time.perf_counter()
-    popt, pcov = curve_fit(
-        model_func,
-        wavelength_obs_cut_to_lines,
-        flux_obs_cut_to_lines,
-        p0=p0,
-        bounds=def_bounds,
-    )
-    if not silent:
-        print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
-        print(f"Fitted teff: {popt[0] * 1000:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
-        print(popt)
-    return float(popt[0]), float(np.sqrt(np.diag(pcov))[0])
+    p0[4:] = (len(p0) - 4) * [0.0]  # set all other parameters to 0, except the first four
 
-def fit_logg(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
-    # load mg_fe and ca_fe lines
-    mg_fe_lines = pd.read_csv("../linemasks/mg_triplet.csv")
-    mg_fe_lines = mg_fe_lines['ll']
-    ca_fe_lines = pd.read_csv("../linemasks/ca_triplet.csv")
-    ca_fe_lines = ca_fe_lines['ll']
-    fe_lines = pd.read_csv("../fe_lines_hr_good.csv")
-    fe_lines = list(fe_lines["ll"])
-    # combine both
-    logg_lines = list(mg_fe_lines) + list(fe_lines) + list(ca_fe_lines)
-    p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
-    input_values = [final_parameters["teff"], None, None, 99] + [0] * (len(labels) - 4) + [None, 0, None]
-    # find location of mg_fe and ca_fe in the labels
-    mg_index = labels.index("Mg_Fe")
-    ca_index = labels.index("Ca_Fe")
-    # set mg and ca to 0
-    input_values[mg_index] = None
-    input_values[ca_index] = None
-    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
-    wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=1, payne_cut_aa=2)
-    model_func = make_model_spectrum_for_curve_fit(
-        payne_coeffs,
-        wavelength_payne_cut,
-        input_values,
-        resolution_val=resolution_val,
-        pixel_limits=combined_mask_payne
+    stellar_parameters = StellarParameters(
+        teff=Parameter(value=p0[0], std=-99, fit=True, min_value=payne_parameters.x_min[0], max_value=payne_parameters.x_max[0], label_name="teff"),
+        logg=Parameter(value=p0[1], std=-99, fit=True, min_value=payne_parameters.x_min[1], max_value=payne_parameters.x_max[1], label_name="logg"),
+        feh=Parameter(value=p0[2], std=-99, fit=True, min_value=payne_parameters.x_min[2], max_value=payne_parameters.x_max[2], label_name="feh"),
+        vmic=Parameter(value=p0[3], std=-99, fit=True, min_value=payne_parameters.x_min[3], max_value=payne_parameters.x_max[3], label_name="vmic"),
+        vsini=Parameter(value=3, std=-99, fit=True, min_value=0.0, max_value=100.0, label_name="vsini"),
+        vmac=Parameter(value=0, std=-99, fit=False, min_value=0.0, max_value=100.0, label_name="vmac"),
+        doppler_shift=Parameter(value=0, std=-99, fit=True, min_value=-5.0, max_value=5.0, label_name="doppler_shift"),
     )
-    if not silent:
-        print("Fitting...")
-        time_start = time.perf_counter()
-    popt, pcov = curve_fit(
-        model_func,
-        wavelength_obs_cut_to_lines,
-        flux_obs_cut_to_lines,
-        p0=p0,
-        bounds=def_bounds,
-    )
-    if not silent:
-        print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
-        print(f"Fitted logg: {popt[0]:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
-        print(f"Fitted doppler shift: {popt[-1]:.3f} +/- {np.sqrt(np.diag(pcov))[-1]:.3f}")
-    return float(popt[0]), float(np.sqrt(np.diag(pcov))[0]), float(popt[-1]), float(np.sqrt(np.diag(pcov))[-1])
 
-def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, do_hydrogen_lines=False, silent=False, p0_input=None):
+    # add abundances
+    for i, label in enumerate(payne_parameters.labels[4:]):
+        stellar_parameters.abundances[label] = Parameter(
+            value=0.0, std=-99, fit=True, min_value=payne_parameters.x_min[i + 4], max_value=payne_parameters.x_max[i + 4], label_name=label
+        )
+
+    return stellar_parameters
+
+
+def fit_stellar_parameters(stellar_parameters: StellarParameters, payne_parameters: PayneParams, wavelength_obs, flux_obs, do_hydrogen_lines=False, silent=False):
     # load mg_fe and ca_fe lines
     h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
     h_line_cores = h_line_cores['ll']
@@ -467,19 +523,6 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
     fe_line_payne_cut = [1.25] * len(fe_lines)
     # combine both
     logg_lines = list(mg_fe_lines) + list(ca_fe_lines) + list(fe_lines)
-    p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
-    input_values = [None, None, None, None] + [0] * (len(labels) - 4) + [None, 0, None]
-    # find location of mg_fe and ca_fe in the labels
-    mg_index = labels.index("Mg_Fe")
-    ca_index = labels.index("Ca_Fe")
-    o_index = labels.index("O_Fe")
-    c_index = labels.index("C_Fe")
-    # set mg and ca to 0
-    input_values[mg_index] = None
-    input_values[ca_index] = None
-    #input_values[o_index] = None
-    #input_values[c_index] = None
-
     lines_to_use = mg_line_cut + ca_line_cut + fe_line_cut
     lines_to_cut = mg_line_payne_cut + ca_line_payne_cut + fe_line_payne_cut
 
@@ -488,10 +531,10 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
         lines_to_cut += h_line_payne_cut
         logg_lines += list(h_line_cores)
 
-    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
-
-    if p0_input is not None:
-        p0 = p0_input
+    lsq = stellar_parameters.build_lsq_inputs(
+        payne_parameters.labels,
+        ["teff", "logg", "feh", "vmic", "vsini", "vmac", "Mg_Fe", "Ca_Fe", "doppler_shift"]
+    )
 
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
         wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=lines_to_use,
@@ -499,34 +542,46 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
         wavelength_payne_cut,
-        input_values,
+        lsq.input_values,
         resolution_val=resolution_val,
         pixel_limits=combined_mask_payne
     )
     if not silent:
         print("Fitting...")
         time_start = time.perf_counter()
+
     popt, pcov = curve_fit(
         model_func,
         wavelength_obs_cut_to_lines,
         flux_obs_cut_to_lines,
-        p0=p0,
-        bounds=def_bounds,
+        p0=lsq.p0,
+        bounds=lsq.bounds,
         max_nfev=10e5
     )
-    print(popt)
+
     if not silent:
         print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
-        print(f"Fitted teff: {popt[0]:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
-        print(f"Fitted logg: {popt[1]:.3f} +/- {np.sqrt(np.diag(pcov))[1]:.3f}")
-        print(f"Fitted doppler shift: {popt[-1]:.3f} +/- {np.sqrt(np.diag(pcov))[-1]:.3f}")
-    return float(popt[0]), float(np.sqrt(np.diag(pcov))[0]), float(popt[1]), float(np.sqrt(np.diag(pcov))[1]), float(popt[-1]), float(np.sqrt(np.diag(pcov))[-1]), popt
+        for i, label in enumerate(lsq.labels):
+            print(f"Fitted {label:>16}: {popt[i]:>8.3f} +/- {np.sqrt(np.diag(pcov))[i]:>8.3f}")
+
+    sigmas = np.sqrt(np.diag(pcov))  # vector of 1-sigma errors
+
+    for lab, val, err in zip(lsq.labels, popt, sigmas):
+        if lab in stellar_parameters._core_map:  # stellar parameters
+            attr = stellar_parameters._core_map[lab]
+            old_param = getattr(stellar_parameters, attr)
+        else:  # abundance
+            old_param = stellar_parameters.abundances[lab]
+
+        old_param.value, old_param.std = float(val), float(err)
+
+    return stellar_parameters
 
 
-def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False, fit_vsini=False, fit_vmac=False):
+def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False, fit_vsini=False, fit_vmac=False):
     fe_lines = pd.read_csv("../linemasks/fe_lines_hr_good.csv")
     fe_lines = list(fe_lines["ll"])
-    p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
+    p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max)
 
     if fit_vsini:
         vsini_value = None
@@ -773,28 +828,7 @@ def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, waveleng
 
 
 if __name__ == '__main__':
-    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_alt_smallerldelta_ts_nlte_lesselements_hr10_2025-02-27-08-43-08.npz"
-    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr3_2025-03-10-10-19-24.npz"
-    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr10_2025-03-12-07-46-13.npz"
-    #path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr13_2025-03-12-08-29-38.npz"
-    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr15n_2025-03-12-08-32-42.npz"
-    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr15n_smalldelta_2025-03-24-14-04-40.npz"
-    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr15n_smalldelta_2025-03-24-14-46-44.npz"
-    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_2025-03-27-08-06-34.npz"
-    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_2025-06-06-14-18-21.npz"
-    #path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr10_2025-03-12-07-46-13.npz"
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-16-06-28-26.npz"
-    """teff           :   5692.693 +/-      3.459
-logg           :      4.469 +/-      0.013
-feh            :     -0.261 +/-      0.004
-vmic           :      1.385 +/-      0.014
-A_Li           :      0.000 +/-      0.218
-C_Fe           :      0.347 +/-      0.008
-Ca_Fe          :      0.037 +/-      0.009
-Ba_Fe          :     -0.058 +/-      0.021
-vsini          :      0.000 +/-     -1.000
-vmac           :      2.216 +/-      0.024
-doppler_shift  :      0.327 +/-      0.008"""
     payne_coeffs, wavelength_payne, labels = load_payne(path_model)
     x_min = list(payne_coeffs[-2])
     x_max = list(payne_coeffs[-1])
@@ -806,44 +840,29 @@ doppler_shift  :      0.327 +/-      0.008"""
 
     resolution_val = None
 
-    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
-    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/melchiors.txt", dtype=float, unpack=True)
-    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/melchiors.txt", dtype=float, unpack=True)
     wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/payne/observed_spectra_to_test/Sun_melchiors_spectrum.txt", dtype=float, unpack=True)
-    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/iag_solar_flux.txt", dtype=float, unpack=True)
-    #wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/sun_nlte.spec", dtype=float, unpack=True, usecols=(0, 1))
-    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G48-29", dtype=float, unpack=True)
-    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G64-12", dtype=float, unpack=True)
-    #data = np.loadtxt("18Sco_cont_norm.txt", dtype=float, unpack=True)
-    #wavelength_obs, flux_obs = data[:, 0], data[:, 1]
-    #wavelength_obs, flux_obs = np.loadtxt("ADP_18sco_snr396_HARPS_17.707g_2.norm", dtype=float, unpack=True, usecols=(0, 2), skiprows=1)
-    #wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/synthetic_data_sun_nlte_full.txt", dtype=float, unpack=True, usecols=(0, 1))
-    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/diff_stellar_spectra_MB/HARPS_HD122563.txt", dtype=float, unpack=True, usecols=(0, 1))
     stellar_rv = 0
-
-    #folder = "/Users/storm/Downloads/Cont/"
-    #folder_spectra = "/Users/storm/Downloads/Science/"
-    #file1 = "Sun_melchiors_spectrum.npy"
-    #continuum = np.load(f"{folder}{file1}")
-    #spectra = np.load(f"{folder_spectra}{file1}")
-    #wavelength_obs = continuum[0]
-    #flux_obs = spectra[1] / continuum[1]
-
-    #wavelength_obs, flux_obs = conv_res(wavelength_obs, flux_obs, 20000)
 
     h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
     h_line_cores = list(h_line_cores['ll'])
 
     wavelength_obs, flux_obs = process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5)
 
-    final_parameters = {}
-    final_parameters_std = {}
+    payne_parameters = PayneParams(
+        payne_coeffs=payne_coeffs,
+        wavelength_payne=wavelength_payne,
+        labels=labels,
+        x_min=x_min,
+        x_max=x_max,
+        resolution_val=resolution_val
+    )
 
-    teff, teff_std, logg, logg_std, doppler_shift, doppler_shift_std, popt = fit_teff_logg(labels, payne_coeffs, x_min,
-                                                                                           x_max, stellar_rv,
-                                                                                           wavelength_obs, flux_obs,
-                                                                                           wavelength_payne,
-                                                                                           resolution_val, silent=False)
+    stellar_parameters = create_default_stellar_parameters(payne_parameters)
+    stellar_parameters.teff.fit = False
+    stellar_parameters.teff.value = 5777 / 1000
+    stellar_parameters = fit_stellar_parameters(stellar_parameters, payne_parameters, wavelength_obs, flux_obs, silent=False)
+
+    print(stellar_parameters)
 
     final_parameters["teff"] = teff
     final_parameters_std["teff"] = teff_std
