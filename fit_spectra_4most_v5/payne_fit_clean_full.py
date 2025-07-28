@@ -40,6 +40,10 @@ class Parameter:
     def bounds(self) -> tuple[float, float]:
         return self.min_value, self.max_value
 
+    def fmt(self) -> str:
+        flag = "fit " if self.fit else "fix "
+        return f"{flag} {self.value:10.3f} ± {self.std:7.3f}"
+
 @dataclass(slots=True)
 class LSQSetup:
     p0: list[float]
@@ -67,6 +71,24 @@ class StellarParameters:
         "vmac": "vmac",
         "doppler_shift": "doppler_shift",
     }
+
+    def __str__(self) -> str:
+        # Column widths
+        name_w, val_w = 15, 20
+        header = f"{'Label':{name_w}} | {'Mode & Value':{val_w}}\n" + "-" * (name_w + val_w + 3)
+
+        rows: list[str] = []
+
+        # core labels in fixed order
+        for lab in ("teff", "logg", "feh", "vmic", "vsini", "vmac", "doppler_shift"):
+            param: Parameter = getattr(self, lab)
+            rows.append(f"{lab:{name_w}} | {param.fmt()}")
+
+        # abundances sorted alphabetically
+        for lab, param in sorted(self.abundances.items()):
+            rows.append(f"{lab:{name_w}} | {param.fmt()}")
+
+        return "\n".join([header, *rows])
 
     def build_lsq_inputs(
         self,
@@ -413,24 +435,6 @@ def scale_back(x, x_min, x_max, label_name=None):
     return list(return_value)
 
 
-def get_bounds_and_p0(p0, input_values, def_bounds):
-    columns_to_pop = []
-    for i, input_value in enumerate(input_values):
-        if input_value is not None:
-            if i == 0 and input_value > 100:
-                input_value /= 1000
-            p0[i] = input_value
-            # remove that column
-            columns_to_pop.append(i)
-    # remove the columns from p0 and def_bounds
-    for i in sorted(columns_to_pop, reverse=True):
-        p0.pop(i)
-        def_bounds[0].pop(i)
-        def_bounds[1].pop(i)
-
-    return p0, def_bounds
-
-
 def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, lines_to_use, stellar_rv, obs_cut_aa=0.5, payne_cut_aa=0.75):
     # cut so that we only take the lines we want
     masks = []
@@ -469,15 +473,6 @@ def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, lines_to_use, 
 
     return wavelength_obs_cut_to_lines_, flux_obs_cut_to_lines_, wavelength_payne_cut_, combined_mask_payne_
 
-def get_default_p0_guess(labels, payne_coeffs, x_min, x_max):
-    p0 = scale_back([0] * (len(labels)), payne_coeffs[-2], payne_coeffs[-1], label_name=None)
-    p0[4:] = (len(p0) - 4) * [0.0]  # set all other parameters to 0, except the first four
-    # add extra 3 0s
-    p0 += [3, 3, 0]
-
-    input_values = [None] * len(p0)
-    def_bounds = (x_min + [0, 0, -5], x_max + [100, 100, 5])
-    return p0, input_values, def_bounds
 
 def create_default_stellar_parameters(payne_parameters: PayneParams):
     p0 = scale_back([0] * (len(payne_parameters.labels)), payne_parameters.x_min, payne_parameters.x_max)
@@ -577,84 +572,6 @@ def fit_stellar_parameters(stellar_parameters: StellarParameters, payne_paramete
 
     return stellar_parameters
 
-
-def fit_feh(final_parameters, labels, payne_coeffs, x_min, x_max, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False, fit_vsini=False, fit_vmac=False):
-    fe_lines = pd.read_csv("../linemasks/fe_lines_hr_good.csv")
-    fe_lines = list(fe_lines["ll"])
-    p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max)
-
-    if fit_vsini:
-        vsini_value = None
-    else:
-        vsini_value = 0
-
-    if fit_vmac:
-        vmac_value = None
-    else:
-        vmac_value = 0
-
-    input_values = [final_parameters["teff"], final_parameters["logg"], None, None] + [0] * (
-                len(labels) - 4) + [vsini_value, vmac_value, final_parameters["doppler_shift"]]
-
-    o_index = labels.index("O_Fe")
-    c_index = labels.index("C_Fe")
-    input_values[o_index] = None
-    input_values[c_index] = None
-
-    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
-
-    wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, fe_lines, stellar_rv, obs_cut_aa=0.5, payne_cut_aa=0.75)
-
-    model_func = make_model_spectrum_for_curve_fit(
-        payne_coeffs,
-        wavelength_payne_cut,
-        input_values,
-        resolution_val=resolution_val,
-        pixel_limits=combined_mask_payne
-    )
-
-    if not silent:
-        print("Fitting...")
-        time_start = time.perf_counter()
-
-    popt, pcov = curve_fit(
-        model_func,
-        wavelength_obs_cut_to_lines,
-        flux_obs_cut_to_lines,
-        p0=p0,
-        bounds=def_bounds,
-        max_nfev=10e5
-    )
-
-    if fit_vsini and fit_vmac:
-        vsini_value = float(popt[-2])
-        vsini_error = float(np.sqrt(np.diag(pcov))[-2])
-        vmac_value = float(popt[-1])
-        vmac_error = float(np.sqrt(np.diag(pcov))[-1])
-    elif fit_vsini and not fit_vmac:
-        vsini_value = float(popt[-1])
-        vsini_error = float(np.sqrt(np.diag(pcov))[-1])
-        vmac_value = 0
-        vmac_error = -1
-    elif fit_vmac and not fit_vsini:
-        vmac_value = float(popt[-1])
-        vmac_error = float(np.sqrt(np.diag(pcov))[-1])
-        vsini_value = 0
-        vsini_error = -1
-    else:
-        vmac_value, vmac_error = 0, -1
-        vsini_value, vsini_error = 0, -1
-
-    if not silent:
-        print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
-        print(f"Fitted feh: {popt[0]:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
-        print(f"Fitted vmic: {popt[1]:.3f} +/- {np.sqrt(np.diag(pcov))[1]:.3f}")
-        print(f"Fitted vsini: {vsini_value:.3f} +/- {vsini_error:.3f}")
-        print(f"Fitted vmac: {vmac_value:.3f} +/- {vmac_error:.3f}")
-
-    return float(popt[0]), float(np.sqrt(np.diag(pcov))[0]), float(popt[1]), float(np.sqrt(np.diag(pcov))[1]), vsini_value, vsini_error, vmac_value, vmac_error
-
 def scale_dlam(dlam, broadening):
     # scales dlam where to fit a line with broadening, a rough calculation based on my own
     # done for R = 20 000
@@ -672,12 +589,12 @@ def scale_dlam(dlam, broadening):
 
     return dlam * scaling
 
-
-def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False):
+def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParameters, payne_parameters: PayneParams, wavelength_obs, flux_obs, silent=False):
     if element_to_fit == "A_Li":
         path = f"../linemasks/li.csv"
     else:
         path = f"../linemasks/{element_to_fit.split('_')[0].lower()}.csv"
+
     if os.path.exists(path):
         elements_lines_data = pd.read_csv(path)
         element_lines = list(elements_lines_data['ll'])
@@ -689,23 +606,9 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
         element_lines = [5000]
         dlam = [2000]
 
-    dlam = scale_dlam(dlam, final_parameters["vsini"])
+    dlam = scale_dlam(dlam, stellar_parameters.vsini.value + stellar_parameters.vmac.value)
 
-    p0, input_values, def_bounds = get_default_p0_guess(labels, payne_coeffs, x_min, x_max, stellar_rv)
-    input_values = [(final_parameters["teff"]), (final_parameters["logg"]), (final_parameters["feh"]),
-                    (final_parameters["vmic"])] + [0] * (len(labels) - 4) + [(final_parameters["vsini"]), 0,
-                                                                                  (final_parameters[
-                                                                                            "doppler_shift"])]
-
-    for fitted_label in final_parameters.keys():
-        if fitted_label.endswith("_Fe") and fitted_label in labels:
-            index = labels.index(fitted_label)
-            input_values[index] = final_parameters[fitted_label]
-
-    index_element = labels.index(element_to_fit)
-    input_values[index_element] = None
-
-    p0, columns_to_pop, labels_to_fit, def_bounds = get_bounds_and_p0(p0, input_values, def_bounds, labels)
+    lsq = stellar_parameters.build_lsq_inputs(payne_parameters.labels, [element_to_fit])
 
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
         wavelength_obs, flux_obs, wavelength_payne, element_lines, stellar_rv, obs_cut_aa=list(dlam), payne_cut_aa=list(np.asarray(dlam) * 1.5))
@@ -713,7 +616,7 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
     model_func = make_model_spectrum_for_curve_fit(
         payne_coeffs,
         wavelength_payne_cut,
-        input_values,
+        lsq.input_values,
         resolution_val=resolution_val,
         pixel_limits=combined_mask_payne,
         flux_obs = flux_obs_cut_to_lines
@@ -728,19 +631,26 @@ def fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, 
             model_func,
             wavelength_obs_cut_to_lines,
             flux_obs_cut_to_lines,
-            p0=p0,
-            bounds=def_bounds,
+            p0=lsq.p0,
+            bounds=lsq.bounds,
         )
+        fitted_value = float(popt[0])
+        fitted_error = float(np.sqrt(np.diag(pcov))[0])
     except ValueError:
         print(f"Fitting failed for element {element_to_fit}")
-        return -99, -1
+        fitted_value = -99
+        fitted_error = -99
 
     if not silent:
         print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
-        print(f"Fitted {element_to_fit}: {popt[0]:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
+        print(f"Fitted {element_to_fit}: {fitted_value:.3f} +/- {fitted_error:.3f}")
 
-    #input_values[index_element] = float(popt[0])
-    return float(popt[0]), float(np.sqrt(np.diag(pcov))[0])
+    if element_to_fit in stellar_parameters.abundances:
+        stellar_parameters.abundances[element_to_fit].value = fitted_value
+        stellar_parameters.abundances[element_to_fit].std = fitted_error
+
+    return stellar_parameters
+
 
 def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, wavelength_obs, flux_obs, labels, resolution_val=None, real_labels2=None, real_labels2_xfe=None, real_labels2_vsini=None, plot_show=True):
     doppler_shift = final_parameters['doppler_shift']
@@ -858,71 +768,24 @@ if __name__ == '__main__':
     )
 
     stellar_parameters = create_default_stellar_parameters(payne_parameters)
-    stellar_parameters.teff.fit = False
-    stellar_parameters.teff.value = 5777 / 1000
     stellar_parameters = fit_stellar_parameters(stellar_parameters, payne_parameters, wavelength_obs, flux_obs, silent=False)
 
-    print(stellar_parameters)
-
-    final_parameters["teff"] = teff
-    final_parameters_std["teff"] = teff_std
-    final_parameters["logg"] = logg
-    final_parameters["doppler_shift"] = doppler_shift
-    final_parameters_std["logg"] = logg_std
-    final_parameters_std["doppler_shift"] = doppler_shift_std
-
-    # 3. FEH, VMIC, VMAC
-    feh, feh_std, vmic, vmic_std, vsini, vsini_std, vmac, vmac_std = fit_feh(final_parameters, labels, payne_coeffs,
-                                                                             x_min, x_max, stellar_rv, wavelength_obs,
-                                                                             flux_obs, wavelength_payne, resolution_val,
-                                                                             silent=False, fit_vsini=True, fit_vmac=False)
-
-    final_parameters["feh"] = feh
-    final_parameters["vmic"] = vmic
-    final_parameters["vsini"] = vsini
-    final_parameters["vmac"] = vmac
-    final_parameters_std["feh"] = feh_std
-    final_parameters_std["vmic"] = vmic_std
-    final_parameters_std["vsini"] = vsini_std
-    final_parameters_std["vmac"] = vmac_std
-
-    # 4. REMAINING ELEMENTS ONE-BY-ONE
-    # find how many _Fe labels are there
     elements_to_fit = []
     for i, label in enumerate(labels):
         if label.endswith("_Fe") or label == "A_Li":
             elements_to_fit.append(label)
 
     for element_to_fit in elements_to_fit:
-        xfe, xfe_std = fit_one_xfe_element(final_parameters, element_to_fit, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs,
-                            wavelength_payne, resolution_val, silent=False)
+        stellar_parameters = fit_one_xfe_element(element_to_fit, stellar_parameters, payne_parameters, wavelength_obs, flux_obs, silent=True)
 
-        final_parameters[element_to_fit] = xfe
-        final_parameters_std[element_to_fit] = xfe_std
+    print(stellar_parameters)
 
+    final_params = stellar_parameters.build_lsq_inputs(labels, []).input_values
+    vmac = final_params[-2]
+    vsini = final_params[-3]
+    doppler_shift = final_params[-1]
 
-    # PRINT RESULTS
-    for label in label_names:
-        value = final_parameters[label]
-        std_error = final_parameters_std[label]
-        if label != 'teff':
-            print(f"{label:<15}: {value:>10.3f} +/- {std_error:>10.3f}")
-        else:
-            print(f"{label:<15}: {value*1000:>10.3f} +/- {std_error*1000:>10.3f}")
-    if resolution_val is not None:
-        print(f"{'Resolution':<15}: {int(resolution_val):>10}")
-
-
-    doppler_shift = final_parameters['doppler_shift']
-    vmac = final_parameters['vmac']
-    vsini = final_parameters['vsini']
-
-    final_params = []
-
-    for label in labels:
-        final_params.append(final_parameters[label])
-
-    real_labels = final_params
+    real_labels = final_params[:-3]  # take all but the last three parameters
     scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
     payne_fitted_spectra = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
                                                                   NN_coeffs=payne_coeffs)
@@ -938,7 +801,6 @@ if __name__ == '__main__':
     plt.figure(figsize=(18, 6))
     plt.scatter(wavelength_obs, flux_obs, label="Observed", s=3, color='k')
     plt.plot(wavelength_payne_plot * (1 + (doppler_shift / 299792.)), payne_fitted_spectra, label="Payne", color='r')
-    #plt.plot(wavelength_test * (1 + (doppler_shift / 299792.)) * (1 + (doppler_shift / 299792.)), flux_test, label="Payne test", color='b')
     plt.ylim(0.0, 1.05)
     plt.xlim(wavelength_payne_plot[0], wavelength_payne_plot[-1])
     plt.show()
