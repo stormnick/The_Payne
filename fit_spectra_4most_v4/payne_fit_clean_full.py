@@ -514,6 +514,7 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
         bounds=def_bounds,
         max_nfev=10e5
     )
+    print(popt)
     if not silent:
         print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
         print(f"Fitted teff: {popt[0]:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
@@ -747,6 +748,7 @@ def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, waveleng
         wavelength_obs_cut.extend(wavelength_obs[mask])
         flux_obs_cut.extend(flux_obs[mask])
 
+    #np.savetxt("fitted_spectrum_.txt", np.vstack((wavelength_payne_plot * (1 + (doppler_shift / 299792.)), payne_fitted_spectra)).T, fmt='%.6f', header='wavelength_payne flux_payne')
 
     plt.figure(figsize=(18, 6))
     plt.scatter(wavelength_obs_cut, flux_obs_cut, label="Observed", s=3, color='k')
@@ -781,6 +783,7 @@ if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_2025-03-27-08-06-34.npz"
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_2025-06-06-14-18-21.npz"
     #path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_nlte_hr10_2025-03-12-07-46-13.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-16-06-28-26.npz"
     """teff           :   5692.693 +/-      3.459
 logg           :      4.469 +/-      0.013
 feh            :     -0.261 +/-      0.004
@@ -803,9 +806,10 @@ doppler_shift  :      0.327 +/-      0.008"""
 
     resolution_val = None
 
-    wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
+    #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/KPNO_FTS_flux_2960_13000_Kurucz1984.txt", dtype=float, unpack=True)
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/melchiors.txt", dtype=float, unpack=True)
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/melchiors.txt", dtype=float, unpack=True)
+    wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/payne/observed_spectra_to_test/Sun_melchiors_spectrum.txt", dtype=float, unpack=True)
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/Sun/iag_solar_flux.txt", dtype=float, unpack=True)
     #wavelength_obs, flux_obs = np.loadtxt("./ts_spectra/sun_nlte.spec", dtype=float, unpack=True, usecols=(0, 1))
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PycharmProjects/4most/Victor/spectra_victor_jan25/G48-29", dtype=float, unpack=True)
@@ -817,15 +821,15 @@ doppler_shift  :      0.327 +/-      0.008"""
     #wavelength_obs, flux_obs = np.loadtxt("/Users/storm/PhD_2022-2025/Spectra/diff_stellar_spectra_MB/HARPS_HD122563.txt", dtype=float, unpack=True, usecols=(0, 1))
     stellar_rv = 0
 
-    folder = "/Users/storm/Downloads/Cont/"
-    folder_spectra = "/Users/storm/Downloads/Science/"
-    file1 = "Sun_melchiors_spectrum.npy"
-    continuum = np.load(f"{folder}{file1}")
-    spectra = np.load(f"{folder_spectra}{file1}")
-    wavelength_obs = continuum[0]
-    flux_obs = spectra[1] / continuum[1]
+    #folder = "/Users/storm/Downloads/Cont/"
+    #folder_spectra = "/Users/storm/Downloads/Science/"
+    #file1 = "Sun_melchiors_spectrum.npy"
+    #continuum = np.load(f"{folder}{file1}")
+    #spectra = np.load(f"{folder_spectra}{file1}")
+    #wavelength_obs = continuum[0]
+    #flux_obs = spectra[1] / continuum[1]
 
-    wavelength_obs, flux_obs = conv_res(wavelength_obs, flux_obs, 20000)
+    #wavelength_obs, flux_obs = conv_res(wavelength_obs, flux_obs, 20000)
 
     h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
     h_line_cores = list(h_line_cores['ll'])
@@ -835,17 +839,14 @@ doppler_shift  :      0.327 +/-      0.008"""
     final_parameters = {}
     final_parameters_std = {}
 
-    # 1. TEFF
-    # fits teff, logg, feh, vmac, rv for h-alpha lines
-    teff, teff_std = fit_teff(labels, payne_coeffs, x_min, x_max, stellar_rv, h_line_cores, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False)
+    teff, teff_std, logg, logg_std, doppler_shift, doppler_shift_std, popt = fit_teff_logg(labels, payne_coeffs, x_min,
+                                                                                           x_max, stellar_rv,
+                                                                                           wavelength_obs, flux_obs,
+                                                                                           wavelength_payne,
+                                                                                           resolution_val, silent=False)
 
     final_parameters["teff"] = teff
     final_parameters_std["teff"] = teff_std
-
-    # 2. LOGG, FEH, VMAC, RV, also fit Mg, Ca
-
-    logg, logg_std, doppler_shift, doppler_shift_std = fit_logg(final_parameters, labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs, flux_obs, wavelength_payne, resolution_val, silent=False)
-
     final_parameters["logg"] = logg
     final_parameters["doppler_shift"] = doppler_shift
     final_parameters_std["logg"] = logg_std

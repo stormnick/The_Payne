@@ -52,6 +52,14 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_coeffs, wavelength_payne, l
                                                                                      wavelength_obs, flux_obs,
                                                                                      wavelength_payne,
                                                                                      resolution_val, silent=False)
+    feh = popt[2]
+    vmic = popt[3]
+    vsini = popt[-2]
+    vmac = 0
+    feh_std = 0.1
+    vmic_std = 0.1
+    vsini_std = 0.1
+    vmac_std = -99
 
     if logg > 30.5:
         teff, teff_std, logg, logg_std, doppler_shift, doppler_shift_std, _ = fit_teff_logg(labels, payne_coeffs, x_min,
@@ -67,14 +75,14 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_coeffs, wavelength_payne, l
     final_parameters_std["logg"] = logg_std
     final_parameters_std["doppler_shift"] = doppler_shift_std
 
-    # 3. FEH, VMIC, VMAC
-    feh, feh_std, vmic, vmic_std, vsini, vsini_std, vmac, vmac_std = fit_feh(final_parameters, labels, payne_coeffs,
-                                                                             x_min, x_max, stellar_rv,
-                                                                             wavelength_obs,
-                                                                             flux_obs, wavelength_payne,
-                                                                             resolution_val,
-                                                                             silent=False, fit_vsini=True,
-                                                                             fit_vmac=False)
+    ## 3. FEH, VMIC, VMAC
+    #feh, feh_std, vmic, vmic_std, vsini, vsini_std, vmac, vmac_std = fit_feh(final_parameters, labels, payne_coeffs,
+    #                                                                         x_min, x_max, stellar_rv,
+    #                                                                         wavelength_obs,
+    #                                                                         flux_obs, wavelength_payne,
+    #                                                                         resolution_val,
+    #                                                                         silent=False, fit_vsini=True,
+    #                                                                         fit_vmac=False)
     final_parameters["feh"] = feh
     final_parameters["vmic"] = vmic
     final_parameters["vsini"] = vsini
@@ -172,7 +180,9 @@ if __name__ == '__main__':
     print(f"Fitting {len(files)} spectra... starting at {time.strftime('%H:%M:%S', time.localtime())}")
 
     file_to_fit = "UVES_alfTau"
-    file_to_fit = "UVES-POP_Procyon"
+    file_to_fit = "NARVAL_Arcturus"
+    #file_to_fit = "HD84937_UVES.txt"
+    #file_to_fit = "HD122563_UVES.txt"
 
     for file in files:
         if file_to_fit in file:

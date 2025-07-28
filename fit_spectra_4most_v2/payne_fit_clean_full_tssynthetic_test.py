@@ -142,7 +142,7 @@ if __name__ == '__main__':
     def get_spectra(snr_to_do: int):
         tag = f"hrs_snr{snr_to_do}"
         return [
-            os.path.join(folder_spectra, f)
+            os.one_path_spectra_files.join(folder_spectra, f)
             for f in all_files
             if tag in f and f.split('.')[0] in chosen_ids
         ]

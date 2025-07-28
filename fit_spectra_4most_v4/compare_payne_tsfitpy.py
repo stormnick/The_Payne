@@ -91,7 +91,7 @@ if __name__ == '__main__':
     #merged_data.to_csv("merged_data.csv", index=False)
     mask = ~payne_data['spectraname'].isin(literature_data['spectraname'])
     payne_only = payne_data[mask]  # <-- the rows you’re after
-    #payne_only.to_csv("payne_only.csv", index=False)
+    payne_only.to_csv("payne_only2.csv", index=False)
     #print(payne_only)
 
     #print(merged_data["source"])
@@ -210,7 +210,8 @@ if __name__ == '__main__':
         #    label=r"$\Delta\mathrm{[Fe/H]}\;(\mathrm{Soubiran}-\mathrm{Payne})$"
         #)
 
-        plt.show()
+        #plt.show()
+        plt.close()
 
 
         fig, ax = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
@@ -265,7 +266,8 @@ if __name__ == '__main__':
             label=r"$\Delta\mathrm{[Fe/H]}\;(\mathrm{TSFitPy}-\mathrm{Payne})$"
         )
 
-        plt.show()
+        #plt.show()
+        plt.close()
 
         fig, ax = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
 
@@ -283,32 +285,36 @@ if __name__ == '__main__':
         panels = [
             #  x                      y                     x-err                1:1 line        title
             (merged_data["Teff"], merged_data["teff"] * 1000, merged_data["eTeff"],
-             ([3800, 8000], [3800, 8000]), "Teff"),
+             ([3700, 7000], [3700, 7000]), "Teff"),
 
             (merged_data["logg_x"], merged_data["logg"], merged_data["elogg"],
-             ([0, 5], [0, 5]), "logg"),
+             ([0.45, 5], [0.45, 5]), "logg"),
 
             (merged_data["Fe_H_tsfitpy"], merged_data["feh"], merged_data["Fe_H_err_Nick"],
-             ([-3.2, 0.5], [-3.2, 0.5]), "[Fe/H]"),
+             ([-3.5, 0.32], [-3.5, 0.32]), "[Fe/H]"),
         ]
 
         # -----------------------------------------------------------
         # 3. plot each panel
         # -----------------------------------------------------------
         for i, (x, y, xerr, (ref_x, ref_y), title) in enumerate(panels):
-            ax[i].plot(ref_x, ref_y, "g--")  # identity line
-            sc = ax[i].scatter(x, y, c='k', s=14)  # points
+            ax[i].plot(ref_x, ref_y, "g--", alpha=0.7)  # identity line
+            sc = ax[i].scatter(x, y, c='k', s=20)  # points
 
             # draw coloured error bars one‐by‐one
             for xi, yi, xe, ci in zip(x, y, xerr, colours):
                 ax[i].errorbar([xi], [yi], xerr=None, fmt="none",
                                capsize=3, linewidth=0.8, ecolor='k')
 
-            ax[i].set_xlabel(f"{title} (Soubiran)")
-            ax[i].set_ylabel(f"{title} (Payne)")
-            ax[i].set_title(title)
+            ax[i].set_xlabel(f"{title} (literature)", fontsize=14)
+            ax[i].set_ylabel(f"{title} (Payne)", fontsize=14)
+            #ax[i].set_title(title, fontsize=14)
+            ax[i].set_xlim(ref_x)
+            ax[i].set_ylim(ref_y)
         ax[-1].set_xlabel(f"{title} (TSFitPy)")
-
+        # set all x fontsize of ticks
+        for i in range(len(ax)):
+            ax[i].tick_params(axis='both', which='major', labelsize=14)
         # -----------------------------------------------------------
         # 4. single colour-bar on the right
         # -----------------------------------------------------------
@@ -324,10 +330,10 @@ if __name__ == '__main__':
 
     columns = 4
     rows = len(elements_to_plot) // columns + 1
-    rows = 3
+    #rows = 3
 
     # subplot
-    fig, ax = plt.subplots(rows, columns, figsize=(rows * 3, columns * 2), constrained_layout=True)
+    fig, ax = plt.subplots(rows, columns, figsize=(rows * 2, columns * 2), constrained_layout=True)
     ax = ax.flatten()  # flatten the 2D array to 1D for easier indexing
     for i, element in enumerate(elements_to_plot):
         x = np.asarray(merged_data[element])
@@ -361,10 +367,9 @@ if __name__ == '__main__':
 
     columns = 4
     rows = len(elements_to_plot) // columns + 1
-    rows = 3
 
     # subplot
-    fig, ax = plt.subplots(rows, columns, figsize=(rows * 3, columns * 2), constrained_layout=True)
+    fig, ax = plt.subplots(rows, columns, figsize=(rows * 2, columns * 2), constrained_layout=True)
     ax = ax.flatten()  # flatten the 2D array to 1D for easier indexing
     for i, element in enumerate(elements_to_plot):
         x = np.asarray(merged_data["feh"])
@@ -405,10 +410,9 @@ if __name__ == '__main__':
 
     columns = 4
     rows = len(elements_to_plot) // columns + 1
-    rows = 3
 
     # subplot
-    fig, ax = plt.subplots(rows, columns, figsize=(rows * 3, columns * 2), constrained_layout=True)
+    fig, ax = plt.subplots(rows, columns, figsize=(rows * 2, columns * 2), constrained_layout=True)
     ax = ax.flatten()  # flatten the 2D array to 1D for easier indexing
     for i, element in enumerate(elements_to_plot):
         x = np.asarray(merged_data["feh"])
@@ -443,5 +447,175 @@ if __name__ == '__main__':
         ax[i].set_ylim(-0.5,1)
         ax[i].set_xlim(-3.2, 0.5)
 
-    plt.savefig("../plots/tsfitpy_payne_gce_comparison.pdf", bbox_inches='tight')
+    #plt.savefig("../plots/tsfitpy_payne_gce_comparison.pdf", bbox_inches='tight')
+    plt.show()
+
+    columns = 6
+    rows = len(elements_to_plot) // columns + 1
+
+    solar_abundances = {
+        "H": 12.00,
+        "He": 10.93,
+        "Li": 1.05,
+        "Be": 1.38,
+        "B": 2.70,
+        "C": 8.56,
+        "N": 7.98,
+        "O": 8.77,
+        "F": 4.40,
+        "Ne": 8.16,
+        "Na": 6.29,
+        "Mg": 7.55,
+        "Al": 6.43,
+        "Si": 7.59,
+        "P": 5.41,
+        "S": 7.16,
+        "Cl": 5.25,
+        "Ar": 6.40,
+        "K": 5.14,
+        "Ca": 6.37,
+        "Sc": 3.07,
+        "Ti": 4.94,
+        "V": 3.89,
+        "Cr": 5.74,
+        "Mn": 5.52,
+        "Fe": 7.50,
+        "Co": 4.95,
+        "Ni": 6.24,
+        "Cu": 4.19,
+        "Zn": 4.56,
+        "Ga": 3.04,
+        "Ge": 3.65,
+        "As": 2.29,  # not in asplund, kept old value
+        "Se": 3.33,  # ditto
+        "Br": 2.56,  # ditto
+        "Kr": 3.25,
+        "Rb": 2.52,
+        "Sr": 2.87,
+        "Y": 2.21,
+        "Zr": 2.58,
+        "Nb": 1.46,
+        "Mo": 1.88,
+        "Tc": -99.00,  # ditto
+        "Ru": 1.75,
+        "Rh": 0.91,
+        "Pd": 1.57,
+        "Ag": 0.94,
+        "Cd": 1.77,  # ditto
+        "In": 0.80,
+        "Sn": 2.04,
+        "Sb": 1.00,  # ditto
+        "Te": 2.19,  # ditto
+        "I": 1.51,  # ditto
+        "Xe": 2.24,
+        "Cs": 1.07,  # ditto
+        "Ba": 2.18,
+        "La": 1.10,
+        "Ce": 1.58,
+        "Pr": 0.72,
+        "Nd": 1.42,
+        "Pm": -99.00,  # ditto
+        "Sm": 0.96,
+        "Eu": 0.52,
+        "Gd": 1.07,
+        "Tb": 0.30,
+        "Dy": 1.10,
+        "Ho": 0.48,
+        "Er": 0.92,
+        "Tm": 0.10,
+        "Yb": 0.84,
+        "Lu": 0.10,
+        "Hf": 0.85,
+        "Ta": -0.17,  # ditto
+        "W": 0.85,
+        "Re": 0.23,  # ditto
+        "Os": 1.40,
+        "Ir": 1.38,
+        "Pt": 1.64,  # ditto
+        "Au": 0.92,
+        "Hg": 1.13,  # ditto
+        "Tl": 0.90,
+        "Pb": 1.75,
+        "Bi": 0.65,  # ditto
+        "Po": -99.00,  # ditto
+        "At": -99.00,  # ditto
+        "Rn": -99.00,  # ditto
+        "Fr": -99.00,  # ditto
+        "Ra": -99.00,  # ditto
+        "Ac": -99.00,  # ditto
+        "Th": 0.02,
+        "Pa": -99.00,  # ditto
+        "U": -0.52  # ditto
+    }
+
+    merged_data["Fe_H"] = merged_data["feh"]  # rename for consistency with Payne data
+    merged_data["Fe_H_std"] = merged_data["feh_std"]  # rename for consistency with Payne data
+    elements_to_plot.append("Fe_H_tsfitpy")  # add Fe_H_tsfitpy to the list of elements to plot
+
+    # subplot
+    fig, ax = plt.subplots(rows, columns, figsize=(rows * 4, columns * 1), constrained_layout=True)
+    ax = ax.flatten()  # flatten the 2D array to 1D for easier indexing
+    for i, element in enumerate(elements_to_plot):
+        x = np.asarray(merged_data["feh"])
+
+        # find element name in solar_abundances
+        if element.replace("_tsfitpy", "") == "A_Li":
+            y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")])  # payne
+            x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0 ) # tsfitpy
+        elif element.replace("_tsfitpy", "") == "Fe_H_tsfitpy":
+            y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")])
+            x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0 )
+            solar_abundance_value = solar_abundances["Fe"]
+            y = y + solar_abundance_value
+            x = x + solar_abundance_value
+        else:
+            y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] + merged_data["feh"])
+            x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0  + merged_data["feh"])
+            solar_abundance_value = solar_abundances[element.replace("_tsfitpy", "").split("_")[0]]
+            y = y + solar_abundance_value
+            x = x + solar_abundance_value
+        x_std = merged_data[f"{element.replace('_tsfitpy', '')}_std"]
+        # find any with std < -90, and get their indices
+        indices = np.where(x_std < -90)[0]
+        # remove any x, y where x_std < -90
+        x = np.delete(x, indices)
+        y = np.delete(y, indices)
+        # find any nan in y, and get their indices
+        indices = np.where(np.isnan(y))[0]
+        x = np.delete(x, indices)
+        y = np.delete(y, indices)
+
+        #ax[i].plot([-4, 0.5], [-4, 0.5], "g--")  # identity line
+        #sc = ax[i].scatter(x, y, c='k', s=14)  # points
+        sc = ax[i].scatter(x, y, c='k', s=14)
+
+        ## draw coloured error bars one‐by‐one
+        #for xi, yi in zip(x, y):
+        #    ax[i].errorbar([xi], [yi], fmt="none",
+        #                   capsize=3, linewidth=0.8, ecolor='k')
+
+        if element.replace("_tsfitpy", "") == "A_Li":
+            ax[i].set_xlabel(f"A(Li) (TSFitPy)")
+            ax[i].set_ylabel(f"A(Li) (Payne)")
+        elif element.replace("_tsfitpy", "") == "Fe_H":
+            ax[i].set_xlabel(f"A(Fe) (TSFitPy)")
+            ax[i].set_ylabel(f"A(Fe) (Payne)")
+        else:
+            ax[i].set_xlabel(f"A({rename_element(element).replace('/Fe]', '').replace('[', '')}) (TSFitPy)")
+            ax[i].set_ylabel(f"A({rename_element(element).replace('/Fe]', '').replace('[', '')}) (Payne)")
+        #ax[i].set_title(f"bias={np.mean(x - y):.3f}, std={np.std(x - y):.3f}")
+
+        # text in each one with the std
+        ax[i].text(0.4, 0.25, f"bias={np.mean(x - y):.3f}\nstd={np.std(x - y):.3f}", transform=ax[i].transAxes,
+                   fontsize=9, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.0))
+
+        # draw one-to-one line
+        combined = np.concatenate((x, y))
+
+        ax[i].plot([np.min(combined), np.max(combined)], [np.min(combined), np.max(combined)], "g--", alpha=0.7)
+
+        #ax[i].set_ylim(-0.5,1)
+        #ax[i].set_xlim(-3.2, 0.5)
+
+    plt.savefig("../plots/a_x_comparison.pdf", bbox_inches='tight')
     plt.show()

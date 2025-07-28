@@ -90,6 +90,9 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_coeffs, wavelength_payne, l
         elif np.abs(xfe - x_max[index]) <= 0.02:
             final_parameters[element_to_fit] = x_max[index] - (x_max[index] - x_min[index]) / 3
             final_parameters_std[element_to_fit] = -99
+        elif np.abs(xfe - x_min[index]) <= 0.02:
+            final_parameters[element_to_fit] = x_min[index] + (x_max[index] - x_min[index]) / 3
+            final_parameters_std[element_to_fit] = -99
         else:
             final_parameters[element_to_fit] = xfe
             final_parameters_std[element_to_fit] = xfe_std
@@ -125,7 +128,7 @@ if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_2025-06-11-08-02-05.npz"
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-16-06-28-26.npz"
     elements_to_refit = ["O_Fe", "Mg_Fe", "Al_Fe", "Cr_Fe", "Na_Fe", "Ni_Fe", "Si_Fe", "Ca_Fe", "Ba_Fe", "Mn_Fe", "Co_Fe", "Sr_Fe", "Eu_Fe", "Ti_Fe", "Y_Fe", "A_Li"]
-    elements_to_refit = ["Mn_Fe"]
+    elements_to_refit = ["Ti_Fe"]
     payne_data = pd.read_csv("fitted_benchmark_extended_refitted.csv")
 
     payne_coeffs, wavelength_payne, labels = load_payne(path_model)

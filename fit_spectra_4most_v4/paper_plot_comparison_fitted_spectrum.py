@@ -15,8 +15,15 @@ if __name__ == '__main__':
     wavelength_fitted, flux_fitted = np.loadtxt(
         "fitted_spectrum_HD140283_UVES.txt", usecols=(0, 1), unpack=True, dtype=float
     )
+    wavelength_fitted, flux_fitted = np.loadtxt(
+        "fitted_spectrum_HD140283_UVES_4most.txt", usecols=(0, 1), unpack=True, dtype=float
+    )
     wavelength_obs, flux_obs = np.loadtxt(
         "/Users/storm/PhD_2025/02.22 Payne/real_spectra_to_fit/converted/HD140283_UVES.txt",
+        usecols=(0, 1), unpack=True, dtype=float
+    )
+    wavelength_obs, flux_obs = np.loadtxt(
+        "/Users/storm/PhD_2022-2025/Spectra/some_lowfeh_benchmark/norm_20k_degraded/HD140283_UVES_4most.txt",
         usecols=(0, 1), unpack=True, dtype=float
     )
 
@@ -34,25 +41,28 @@ if __name__ == '__main__':
 
     # Define zoom regions (e.g. Li line at ~6707 Å ±0.5 Å)
     zoom_regions = [
-        (4290, 4330),
-        (5165, 5185),
-        (6707.2, 6708.35),  # Li line
+        (4290.01, 4329.99),
+        (5166.51, 5184.49),
+        #(5166.71, 5168.00),
+        (6707.21, 6708.349),  # Li line
         # Add more regions as needed
     ]
+
+    telluric_region = (6275, 6557)
 
     # Create a mosaic layout: 3 main panels on top, matching zoom panels below
     mosaic = [
         ['m1', 'm2', 'm3'],
         ['z1', 'z2', 'z3'],
     ]
-    titles = ['CH G-band', 'Mg b triplet', 'Li']
+    titles = ['CH G-band', 'Mg I b triplet', 'Li I doublet']
     fig, axs = plt.subplot_mosaic(
         mosaic,
         figsize=(16, 8),
-        gridspec_kw={'height_ratios': [3, 1], 'hspace': 0.26, 'wspace': 0.05}
+        gridspec_kw={'height_ratios': [3, 1], 'hspace': 0.26, 'wspace': 0.09}
     )
 
-    fig.suptitle('HD 140283', fontsize=16, y=0.92)
+    fig.suptitle('HD 140283 4MOST-HR Payne fit', fontsize=16, y=0.92)
 
     # -- Plot main broken-axis panels --
     for i, ax_key in enumerate(['m1', 'm2', 'm3']):
@@ -61,10 +71,11 @@ if __name__ == '__main__':
         mask_obs = (wavelength_obs >= w0) & (wavelength_obs <= w1)
         mask_fit = (wavelength_fitted >= w0) & (wavelength_fitted <= w1)
         #ax.plot(wavelength_obs[mask_obs], flux_obs[mask_obs], color='black', lw=0.6)
-        ax.scatter(wavelength_obs[mask_obs], flux_obs[mask_obs], color='black', s=0.5)
+        ax.scatter(wavelength_obs[mask_obs], flux_obs[mask_obs], color='black', s=0.7, rasterized=True)
         ax.plot(wavelength_fitted[mask_fit], flux_fitted[mask_fit], color='red', lw=0.6)
         ax.set_xlim(w0, w1)
-        ax.set_ylim(flux_obs[mask_obs].min() - 0.01, flux_obs[mask_obs].max() + 0.01)
+        ax.set_ylim(0, flux_obs[mask_obs].max() + 0.01)
+        ax.tick_params(axis='both', which='major', labelsize=11)
         if i != 0:
             ax.spines['left'].set_visible(False)
             ax.set_yticks([])
@@ -95,7 +106,7 @@ if __name__ == '__main__':
             mask_obs_z = (wavelength_obs >= zr0) & (wavelength_obs <= zr1)
             mask_fit_z = (wavelength_fitted >= zr0) & (wavelength_fitted <= zr1)
             #axz.plot(wavelength_obs[mask_obs_z], flux_obs[mask_obs_z], color='black', lw=0.6)
-            axz.scatter(wavelength_obs[mask_obs_z], flux_obs[mask_obs_z], color='black', s=1)
+            axz.scatter(wavelength_obs[mask_obs_z], flux_obs[mask_obs_z], color='black', s=2, rasterized=True)
             axz.plot(wavelength_fitted[mask_fit_z], flux_fitted[mask_fit_z], color='red', lw=0.6)
             axz.set_xlim(zr0, zr1)
             if i == 0:
@@ -118,6 +129,18 @@ if __name__ == '__main__':
             main_ax.axvline(zr0, color='gray', linestyle='--', lw=0.5)
             main_ax.axvline(zr1, color='gray', linestyle='--', lw=0.5)
 
+            axz.set_ylim(flux_obs[mask_obs_z].min() - 0.1, flux_obs[mask_obs_z].max() + 0.02)
+
+            # set ticks fontsize
+            axz.tick_params(axis='both', which='major', labelsize=11)
+
+            # yticks every 0.1
+            yticks = np.arange(
+                np.floor(axz.get_ylim()[0] * 10) / 10,
+                1 + 0.05, 0.1
+            )
+            axz.set_yticks(yticks)
+
             # set title
             axz.set_title(titles[i], fontsize=12)
         else:
@@ -125,5 +148,35 @@ if __name__ == '__main__':
 
     axs['z2'].set_xlabel('Wavelength [Å]')
 
-    plt.tight_layout()
+    # after you’ve plotted m3 (i.e. axs['m3']):
+    m3 = axs['m3']
+
+    y_base = 0.825  # vertical position of the horizontal line
+    h = 0.02  # height of the little vertical ticks
+
+    # left vertical tick
+    m3.plot([telluric_region[0], telluric_region[0]], [y_base, y_base + h], color='gray', lw=1)
+    # horizontal connector
+    m3.plot([telluric_region[0], telluric_region[1]], [y_base, y_base], color='gray', lw=1)
+    # right vertical tick
+    m3.plot([telluric_region[1], telluric_region[1]], [y_base, y_base + h], color='gray', lw=1)
+
+    # label centered under the bar
+    m3.text(
+        (telluric_region[0] + telluric_region[1]) / 2,  # x-position
+        y_base - 0.01,  # a bit below the line
+        'Telluric lines in\nobserved spectrum',  # your label
+        ha='center', va='top',  # center horizontally, top aligned to that y
+        fontsize=10,
+        color='gray'
+    )
+
+    m3.scatter([-99], [-99], color='black', s=15, label='Observed')
+    m3.plot([-99], [-99], color='red', lw=2, label='Payne Fitted')
+    m3.legend(fontsize=12, loc='lower left', frameon=False)
+
+    # for z2 i need tick seprartion of 5 IT DOESNT WORK
+    axs['z2'].xaxis.set_major_locator(plt.MultipleLocator(5))
+
+    plt.savefig("../plots/HD140283_4MOST-HR_Payne_fit.pdf", bbox_inches='tight')
     plt.show()
