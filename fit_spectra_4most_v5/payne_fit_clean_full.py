@@ -12,7 +12,7 @@ from convolve import *
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 import os
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 matplotlib.use("MacOSX")
 # plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyle")
@@ -150,6 +150,29 @@ class StellarParameters:
             bounds=(pmin, pmax),
             labels=fitted_labels,
         )
+
+    def iter_params(self):
+        """Yield (label, Parameter) for core labels *then* abundances and finally vsini/vmac/doppler_shift."""
+        for lab in ("teff", "logg", "feh", "vmic"):
+            yield lab, getattr(self, lab)
+        yield from self.abundances.items()
+        for lab in ("vsini", "vmac", "doppler_shift"):
+            yield lab, getattr(self, lab)
+
+    # ––––– public helper –––––
+    def to_value_sigma_dicts(self, rename_map: dict[str, str] | None = None, only_fitted: bool = True):
+        """
+        Return two dicts: {label: value}, {label: std}.
+        *rename_map* lets you rename keys on the fly.
+        """
+        ren = (lambda k: rename_map.get(k, k)) if rename_map else (lambda k: k)
+        vals, sigs = {}, {}
+        for lab, p in self.iter_params():
+            if not only_fitted or p.fit:
+                key = ren(lab)
+                vals[key] = p.value
+                sigs[key] = p.std
+        return vals, sigs
 
 def process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5, extra_payne_cut=10):
     """
@@ -477,8 +500,6 @@ def cut_to_just_lines(wavelength_obs, flux_obs, wavelength_payne, lines_to_use, 
 def create_default_stellar_parameters(payne_parameters: PayneParams):
     p0 = scale_back([0] * (len(payne_parameters.labels)), payne_parameters.x_min, payne_parameters.x_max)
 
-    p0[4:] = (len(p0) - 4) * [0.0]  # set all other parameters to 0, except the first four
-
     stellar_parameters = StellarParameters(
         teff=Parameter(value=p0[0], std=-99, fit=True, min_value=payne_parameters.x_min[0], max_value=payne_parameters.x_max[0], label_name="teff"),
         logg=Parameter(value=p0[1], std=-99, fit=True, min_value=payne_parameters.x_min[1], max_value=payne_parameters.x_max[1], label_name="logg"),
@@ -491,8 +512,14 @@ def create_default_stellar_parameters(payne_parameters: PayneParams):
 
     # add abundances
     for i, label in enumerate(payne_parameters.labels[4:]):
+        if label.endswith("_Fe"):
+            value_default = 0.0
+        else:
+            # else is Lithium probably, so we set it to middle value
+            value_default = payne_parameters.x_min[i + 4] + (payne_parameters.x_max[i + 4] - payne_parameters.x_min[i + 4]) / 2
+
         stellar_parameters.abundances[label] = Parameter(
-            value=0.0, std=-99, fit=True, min_value=payne_parameters.x_min[i + 4], max_value=payne_parameters.x_max[i + 4], label_name=label
+            value=value_default, std=-99, fit=True, min_value=payne_parameters.x_min[i + 4], max_value=payne_parameters.x_max[i + 4], label_name=label
         )
 
     return stellar_parameters
@@ -531,14 +558,20 @@ def fit_stellar_parameters(stellar_parameters: StellarParameters, payne_paramete
         ["teff", "logg", "feh", "vmic", "vsini", "vmac", "Mg_Fe", "Ca_Fe", "doppler_shift"]
     )
 
+    if None not in lsq.input_values:
+        # if all input values are set, we can skip the fitting
+        if not silent:
+            print("All input values are set, skipping fitting.")
+        return stellar_parameters
+
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, logg_lines, stellar_rv, obs_cut_aa=lines_to_use,
+        wavelength_obs, flux_obs, payne_parameters.wavelength_payne, logg_lines, 0, obs_cut_aa=lines_to_use,
         payne_cut_aa=lines_to_cut)
     model_func = make_model_spectrum_for_curve_fit(
-        payne_coeffs,
+        payne_parameters.payne_coeffs,
         wavelength_payne_cut,
         lsq.input_values,
-        resolution_val=resolution_val,
+        resolution_val=payne_parameters.resolution_val,
         pixel_limits=combined_mask_payne
     )
     if not silent:
@@ -610,14 +643,20 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
 
     lsq = stellar_parameters.build_lsq_inputs(payne_parameters.labels, [element_to_fit])
 
+    if None not in lsq.input_values:
+        # if all input values are set, we can skip the fitting
+        if not silent:
+            print("All input values are set, skipping fitting.")
+        return stellar_parameters
+
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, wavelength_payne, element_lines, stellar_rv, obs_cut_aa=list(dlam), payne_cut_aa=list(np.asarray(dlam) * 1.5))
+        wavelength_obs, flux_obs, payne_parameters.wavelength_payne, element_lines, 0, obs_cut_aa=list(dlam), payne_cut_aa=list(np.asarray(dlam) * 1.5))
 
     model_func = make_model_spectrum_for_curve_fit(
-        payne_coeffs,
+        payne_parameters.payne_coeffs,
         wavelength_payne_cut,
         lsq.input_values,
-        resolution_val=resolution_val,
+        resolution_val=payne_parameters.resolution_val,
         pixel_limits=combined_mask_payne,
         flux_obs = flux_obs_cut_to_lines
     )
@@ -638,7 +677,25 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
         fitted_error = float(np.sqrt(np.diag(pcov))[0])
     except ValueError:
         print(f"Fitting failed for element {element_to_fit}")
+
         fitted_value = -99
+        fitted_error = -99
+
+    if not silent:
+        print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
+        print(f"Fitted {element_to_fit}: {fitted_value:.3f} +/- {fitted_error:.3f}")
+
+    index = payne_parameters.labels.index(element_to_fit)
+
+    if fitted_value < -90:
+        fitted_value = 0
+        fitted_error = -99
+    elif np.abs(fitted_value - payne_parameters.x_max[index]) <= 0.02:
+        fitted_value = payne_parameters.x_max[index] - (payne_parameters.x_max[index] - payne_parameters.x_min[index]) / 3
+        fitted_value = 0
+        fitted_error = -99
+    elif np.abs(fitted_value - payne_parameters.x_min[index]) <= 0.02:
+        fitted_value = payne_parameters.x_min[index] + (payne_parameters.x_max[index] - payne_parameters.x_min[index]) / 3
         fitted_error = -99
 
     if not silent:
@@ -770,13 +827,14 @@ if __name__ == '__main__':
     stellar_parameters = create_default_stellar_parameters(payne_parameters)
     stellar_parameters = fit_stellar_parameters(stellar_parameters, payne_parameters, wavelength_obs, flux_obs, silent=False)
 
+
     elements_to_fit = []
     for i, label in enumerate(labels):
         if label.endswith("_Fe") or label == "A_Li":
             elements_to_fit.append(label)
 
     for element_to_fit in elements_to_fit:
-        stellar_parameters = fit_one_xfe_element(element_to_fit, stellar_parameters, payne_parameters, wavelength_obs, flux_obs, silent=True)
+        stellar_parameters = fit_one_xfe_element(element_to_fit, stellar_parameters, payne_parameters, wavelength_obs, flux_obs, silent=False)
 
     print(stellar_parameters)
 

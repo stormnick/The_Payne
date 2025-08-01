@@ -71,20 +71,20 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_parameters):
     print(f"Fitted parameters for {filename_to_save}:")
     print(stellar_parameters)
 
-    plot_fitted_payne()
-
     # add to fitted_values
     new_row_df = pd.DataFrame(
         [[filename_to_save, *final_parameters.values(), *final_parameters_std.values()]],
         columns=["spectraname"] + list(final_parameters.keys()) + [f"{name}_std" for name in final_parameters.keys()]
     )
 
+
+    plot_fitted_payne(wavelength_payne, final_parameters, payne_parameters.payne_coeffs, wavelength_obs, flux_obs, payne_parameters.labels, None)#, real_labels2=[4.665, 1.32, -2.657, 1.58])
+
     return new_row_df
 
 def _wrapper(path, folder, payne_parameters):
     stellar_rv = 0
     return fit_one_spectrum(path, stellar_rv, folder, payne_parameters)
-
 
 if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-16-06-28-26.npz"
@@ -97,8 +97,6 @@ if __name__ == '__main__':
     label_names.append('vsini')
     label_names.append('vmac')
     label_names.append('doppler_shift')
-
-    print(label_names)
 
     stellar_rv = 0
     resolution_val = None
@@ -126,25 +124,13 @@ if __name__ == '__main__':
         resolution_val=resolution_val
     )
 
-    rows = process_map(
-        _wrapper,
-        files,  # iterable #1  → `path`
-        repeat(folder),  # iterable #2  → `folder` (reused for every item)
-        repeat(payne_parameters),
-        max_workers=8,
-        chunksize=1,
-        desc="Fitting spectra"
-    )
+    file_to_fit = "UVES_alfTau"
+    file_to_fit = "HD133442"
 
-    # ---------------------------------------------------------------------
-    # 4.  Combine, post-process, save ------------------------------------
-    # ---------------------------------------------------------------------
-    fitted_values = (
-        pd.concat(rows, ignore_index=True)  # bring everything into one DataFrame
-    )
+    for file in files:
+        if file_to_fit in file:
+            rows = _wrapper(file, folder, payne_parameters)
 
-    fitted_values = fitted_values.round(5)
-    fitted_values.to_csv(f"fitted_benchmark_v3.csv", index=False)
 
     end_fit_time = perf_counter()
     print(f"Fitting completed in {(end_fit_time - start_fit_time) / 60:.2f} min.")

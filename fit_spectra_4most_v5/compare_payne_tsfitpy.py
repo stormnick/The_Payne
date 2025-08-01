@@ -122,10 +122,16 @@ if __name__ == '__main__':
                     break
             if element == "":
                 element = "Fe_H"
-            columns = ["specname", element, f"{element}_err", "vsini"]
+            if element != "Fe_H":
+                columns = ["specname", "Fe_H", element, f"{element}_err", "vsini"]
+            else:
+                columns = ["specname", "Fe_H", f"{element}_err", "vsini"]
             new_data = new_data[columns]
             # rename "vsini" to f"{element}_vsini_tsfitpy"
-            new_data.rename(columns={"vsini": f"{element}_vsini"}, inplace=True)
+            if element != "Fe_H":
+                new_data.rename(columns={"vsini": f"{element}_vsini", "Fe_H": f"{element}_Fe_H"}, inplace=True)
+            else:
+                new_data.rename(columns={"vsini": f"{element}_vsini"}, inplace=True)
             if element == "Eu_Fe":
                 for row in new_data.iterrows():
                     print(row[1]["specname"], row[1][element], row[1][f"{element}_err"], row[1][f"{element}_vsini"])
@@ -134,14 +140,14 @@ if __name__ == '__main__':
             else:
                 # concat on specname
                 tsfitpy_data = pd.merge(tsfitpy_data, new_data, on="specname", how="outer", suffixes=("", "_new"))
-    ###tsfitpy_data.to_csv("tsfitpy_data.csv", index=False)
+    tsfitpy_data.to_csv("tsfitpy_data.csv", index=False)
     print(tsfitpy_data)
     # merge tsfitpy_data with merged_data on spectraname
     tsfitpy_data.rename(columns={"specname": "spectraname_og"}, inplace=True)
     # each column add "_tsfitpy"
     tsfitpy_data.rename(columns=lambda x: f"{x}_tsfitpy" if x not in ["spectraname_og"] else x, inplace=True)
     merged_data = pd.merge(merged_data, tsfitpy_data, on="spectraname_og", how="left", suffixes=("", "_tsfitpy"))
-    merged_data["A_Li_tsfitpy"] = merged_data["Li_Fe_tsfitpy"] + merged_data["feh"] + 1.05
+    merged_data["A_Li_tsfitpy"] = merged_data["Li_Fe_tsfitpy"] + merged_data[f"Li_Fe_Fe_H_tsfitpy"] + 1.05
     merged_data.drop(columns=["Li_Fe_tsfitpy"], inplace=True)
     merged_data.to_csv("merged_data_with_tsfitpy_new.csv", index=False)
 
@@ -246,6 +252,8 @@ if __name__ == '__main__':
             ax[i].plot(ref_x, ref_y, "g--")  # identity line
             sc = ax[i].scatter(x, y, c=cvals, cmap=cmap, norm=norm, s=14)  # points
 
+            print(f"{title}: bias={np.mean(x - y):.3f}, std={np.std(x - y):.3f}")
+
             # draw coloured error bars one‐by‐one
             for xi, yi, xe, ci in zip(x, y, xerr, colours):
                 ax[i].errorbar([xi], [yi], xerr=[xe], fmt="none",
@@ -318,7 +326,7 @@ if __name__ == '__main__':
         # -----------------------------------------------------------
         # 4. single colour-bar on the right
         # -----------------------------------------------------------
-        #plt.savefig("../plots/payne_stellar_param_comparison.pdf", bbox_inches='tight')
+        plt.savefig("../plots/payne_stellar_param_comparison.pdf", bbox_inches='tight')
         plt.show()
 
     # find how many elements we can plot
@@ -567,7 +575,7 @@ if __name__ == '__main__':
         if element.replace("_tsfitpy", "") == "A_Li":
             y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")])  # payne
             x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0 ) # tsfitpy
-        elif element.replace("_tsfitpy", "") == "Fe_H_tsfitpy":
+        elif element.replace("_tsfitpy", "") == "Fe_H":
             y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")])
             x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0 )
             solar_abundance_value = solar_abundances["Fe"]
@@ -575,7 +583,7 @@ if __name__ == '__main__':
             x = x + solar_abundance_value
         else:
             y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] + merged_data["feh"])
-            x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0  + merged_data["feh"])
+            x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0  + merged_data[f"{element.replace('_tsfitpy', '')}_Fe_H_tsfitpy"])
             solar_abundance_value = solar_abundances[element.replace("_tsfitpy", "").split("_")[0]]
             y = y + solar_abundance_value
             x = x + solar_abundance_value
@@ -622,5 +630,5 @@ if __name__ == '__main__':
         #ax[i].set_ylim(-0.5,1)
         #ax[i].set_xlim(-3.2, 0.5)
 
-    #plt.savefig("../plots/a_x_comparison.pdf", bbox_inches='tight')
+    plt.savefig("../plots/a_x_comparison.pdf", bbox_inches='tight')
     plt.show()
