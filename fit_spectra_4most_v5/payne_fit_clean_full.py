@@ -525,7 +525,7 @@ def create_default_stellar_parameters(payne_parameters: PayneParams):
     return stellar_parameters
 
 
-def fit_stellar_parameters(stellar_parameters: StellarParameters, payne_parameters: PayneParams, wavelength_obs, flux_obs, do_hydrogen_lines=False, silent=False):
+def fit_stellar_parameters(stellar_parameters: StellarParameters, payne_parameters: PayneParams, wavelength_obs, flux_obs, do_hydrogen_lines=False, sigma_flux=None, silent=False):
     # load mg_fe and ca_fe lines
     h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
     h_line_cores = h_line_cores['ll']
@@ -582,7 +582,9 @@ def fit_stellar_parameters(stellar_parameters: StellarParameters, payne_paramete
         model_func,
         wavelength_obs_cut_to_lines,
         flux_obs_cut_to_lines,
+        sigma=sigma_flux,
         p0=lsq.p0,
+        absolute_sigma=True,
         bounds=lsq.bounds,
         max_nfev=10e5
     )
@@ -622,7 +624,7 @@ def scale_dlam(dlam, broadening):
 
     return dlam * scaling
 
-def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParameters, payne_parameters: PayneParams, wavelength_obs, flux_obs, silent=False):
+def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParameters, payne_parameters: PayneParams, wavelength_obs, flux_obs, sigma_flux=None, silent=False):
     if element_to_fit == "A_Li":
         path = f"../linemasks/li.csv"
     else:
@@ -670,6 +672,8 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
             model_func,
             wavelength_obs_cut_to_lines,
             flux_obs_cut_to_lines,
+            sigma=sigma_flux,
+            absolute_sigma=True,
             p0=lsq.p0,
             bounds=lsq.bounds,
         )

@@ -180,7 +180,7 @@ if __name__ == '__main__':
     print(f"Fitting {len(files)} spectra... starting at {time.strftime('%H:%M:%S', time.localtime())}")
 
     file_to_fit = "UVES_alfTau"
-    file_to_fit = "NARVAL_Arcturus"
+    file_to_fit = "UVES_HD107328"
     #file_to_fit = "HD84937_UVES.txt"
     #file_to_fit = "HD122563_UVES.txt"
 

@@ -24,9 +24,17 @@ matplotlib.use("MacOSX")
 
 # Created by storm at 03.03.25
 
-def fit_one_spectrum(file, stellar_rv, folder, payne_parameters):
+def fit_one_spectrum(file, stellar_rv, folder, payne_parameters, all_snr_df):
     print(f"Fitting {file}")
     wavelength_obs, flux_obs = np.loadtxt(f"{folder}/{file}", usecols=(0, 1), unpack=True, dtype=float)
+
+    # try to find the file in all_snr_df DataFrame
+    file_test = file.replace(".txt", "").replace("IWG7_", "")
+    if file_test in all_snr_df['files'].values:
+        snr = all_snr_df.loc[all_snr_df['files'] == file_test, 'snr'].values[0]
+    else:
+        print(f"Warning: {file_test} not found in all_snr_df, using default SNR of 100.")
+        snr = 100
 
     if stellar_rv != 0:
         wavelength_obs = wavelength_obs / (1 + (stellar_rv / 299792.458))
@@ -40,7 +48,7 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_parameters):
                                                h_line_core_mask_dlam=0.2)
 
     stellar_parameters = fit_stellar_parameters(stellar_parameters, payne_parameters, wavelength_obs, flux_obs,
-                                                silent=True)
+                                                silent=True, sigma_flux=1/snr)
 
     labels = payne_parameters.labels
 
@@ -57,7 +65,7 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_parameters):
 
     for element_to_fit in elements_to_fit:
         stellar_parameters = fit_one_xfe_element(element_to_fit, stellar_parameters, payne_parameters, wavelength_obs,
-                                                 flux_obs, silent=True)
+                                                 flux_obs, silent=True, sigma_flux=1/snr)
 
 
     if "/" in file:
@@ -71,8 +79,6 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_parameters):
     print(f"Fitted parameters for {filename_to_save}:")
     print(stellar_parameters)
 
-    plot_fitted_payne()
-
     # add to fitted_values
     new_row_df = pd.DataFrame(
         [[filename_to_save, *final_parameters.values(), *final_parameters_std.values()]],
@@ -81,9 +87,9 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_parameters):
 
     return new_row_df
 
-def _wrapper(path, folder, payne_parameters):
+def _wrapper(path, folder, payne_parameters, all_snr_df):
     stellar_rv = 0
-    return fit_one_spectrum(path, stellar_rv, folder, payne_parameters)
+    return fit_one_spectrum(path, stellar_rv, folder, payne_parameters, all_snr_df)
 
 
 if __name__ == '__main__':
@@ -108,6 +114,8 @@ if __name__ == '__main__':
     folder = "/Users/storm/PhD_2025/02.22 Payne/real_spectra_to_fit/converted/"
     files = os.listdir(folder)
 
+    all_snr_df = pd.read_csv("snr_values.csv")
+
     # remove ".DS_Store"
     files.remove(".DS_Store")
 
@@ -131,6 +139,7 @@ if __name__ == '__main__':
         files,  # iterable #1  → `path`
         repeat(folder),  # iterable #2  → `folder` (reused for every item)
         repeat(payne_parameters),
+        repeat(all_snr_df),
         max_workers=8,
         chunksize=1,
         desc="Fitting spectra"

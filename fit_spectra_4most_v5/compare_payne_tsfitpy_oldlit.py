@@ -22,9 +22,15 @@ def rename_element(element):
         return f"[{element.split('_')[0]}/{element.split('_')[1]}]"
 
 if __name__ == '__main__':
-    payne_data = pd.read_csv("fitted_benchmark_extended_refitted.csv")
-    literature_data_benchmark = pd.read_csv("/Users/storm/PycharmProjects/payne/observed_spectra_to_test/Table1_updated_S24C25.csv")
-    literature_data_benchmark["source"] = "GES+batch1"
+    payne_data = pd.read_csv("fitted_benchmark_v3.csv")
+    literature_data_benchmark = pd.read_csv("/Users/storm/PycharmProjects/payne/observed_spectra_to_test/alt_old_literature.csv")
+    #literature_data_benchmark["source"] = "GES+batch1"
+    # those with origin "-" source is batch1
+    literature_data_benchmark["source"] = np.where(
+        literature_data_benchmark["reference"] == "heiter2015",
+        "GES",  # if origin is "-", source is batch1
+        "batch1"  # otherwise source is GES
+    )
     literature_data_ruchti = pd.read_csv("/Users/storm/PycharmProjects/payne/june25_test/ruchti2013_literature_lte.csv")
     literature_data_ruchti["source"] = "Ruchti"
 
@@ -49,16 +55,30 @@ if __name__ == '__main__':
     # remove .npy from the file names in payne_data
     payne_data["spectraname"] = payne_data["spectraname"].str.replace(".txt", "").str.replace("IWG7_", "")
 
+    literature_data_benchmark["origin"] = ""
     literature_data_benchmark["origin"] = literature_data_benchmark["origin"].str.replace("BS_", "")
     literature_data_benchmark["origin"] = literature_data_benchmark["origin"].str.replace("UVES-POP", "UVESPOP")
     literature_data_benchmark["origin"] = literature_data_benchmark["origin"].str.replace("-", "")
     literature_data_benchmark["origin"] = literature_data_benchmark["origin"].str.replace("UVESPOP", "UVES-POP")
 
-    literature_data_benchmark["spectraname"] = np.where(
-        literature_data_benchmark["origin"].astype(bool),  # True if origin is non-empty / non-NaN
-        literature_data_benchmark["origin"] + "_" + literature_data_benchmark["star"],
-        literature_data_benchmark["star"]  # if origin is empty → just star
+    # list of prefixes ("" means “leave as is”)
+    prefixes = ["", "UVES_", "NARVAL_", "UVES-POP_", "HARPS_"]
+
+    # 1) attach the full prefixes list to every row, then explode
+    literature_data_benchmark = (
+        literature_data_benchmark
+        .assign(prefix=[prefixes] * len(literature_data_benchmark))  # give each row the whole list
+        .explode('prefix')  # one row per prefix
     )
+
+    # 2) rebuild the star column by prepending the prefix
+    literature_data_benchmark['star'] = literature_data_benchmark['prefix'] + literature_data_benchmark['star'].astype(str)
+
+    # 3) drop the helper column and reset index
+    literature_data_benchmark = literature_data_benchmark.drop(columns='prefix').reset_index(drop=True)
+
+    literature_data_benchmark["spectraname"] = literature_data_benchmark["star"]  # if origin is empty → just star
+
 
     literature_data_ruchti["spectraname"] = literature_data_ruchti["Name"]
 
@@ -91,12 +111,12 @@ if __name__ == '__main__':
     #merged_data.to_csv("merged_data.csv", index=False)
     mask = ~payne_data['spectraname'].isin(literature_data['spectraname'])
     payne_only = payne_data[mask]  # <-- the rows you’re after
-    payne_only.to_csv("payne_only2.csv", index=False)
+    payne_only.to_csv("payne_only_old.csv", index=False)
     #print(payne_only)
 
     #print(merged_data["source"])
     # only leave merged_data that are ["source"] in ["GES+batch1", "Ruchti"]
-    merged_data = merged_data[merged_data["source"].isin(["GES+batch1"])]
+    merged_data = merged_data[merged_data["source"].isin(["GES", "batch1"])]
 
     # load tsfitpy data
     main_folder = "/Users/storm/PhD_2025/02.22 Payne/fitted_spectra_tsfitpy/"
@@ -122,35 +142,38 @@ if __name__ == '__main__':
                     break
             if element == "":
                 element = "Fe_H"
-            columns = ["specname", element, f"{element}_err", "vsini"]
+            if element != "Fe_H":
+                columns = ["specname", "Fe_H", element, f"{element}_err", "vsini"]
+            else:
+                columns = ["specname", "Fe_H", f"{element}_err", "vsini"]
             new_data = new_data[columns]
             # rename "vsini" to f"{element}_vsini_tsfitpy"
-            new_data.rename(columns={"vsini": f"{element}_vsini"}, inplace=True)
-            if element == "Eu_Fe":
-                for row in new_data.iterrows():
-                    print(row[1]["specname"], row[1][element], row[1][f"{element}_err"], row[1][f"{element}_vsini"])
+            if element != "Fe_H":
+                new_data.rename(columns={"vsini": f"{element}_vsini", "Fe_H": f"{element}_Fe_H"}, inplace=True)
+            else:
+                new_data.rename(columns={"vsini": f"{element}_vsini"}, inplace=True)
             if tsfitpy_data.empty:
                 tsfitpy_data = new_data
             else:
                 # concat on specname
                 tsfitpy_data = pd.merge(tsfitpy_data, new_data, on="specname", how="outer", suffixes=("", "_new"))
-    ###tsfitpy_data.to_csv("tsfitpy_data.csv", index=False)
+    #tsfitpy_data.to_csv("tsfitpy_data.csv", index=False)
     print(tsfitpy_data)
     # merge tsfitpy_data with merged_data on spectraname
     tsfitpy_data.rename(columns={"specname": "spectraname_og"}, inplace=True)
     # each column add "_tsfitpy"
     tsfitpy_data.rename(columns=lambda x: f"{x}_tsfitpy" if x not in ["spectraname_og"] else x, inplace=True)
     merged_data = pd.merge(merged_data, tsfitpy_data, on="spectraname_og", how="left", suffixes=("", "_tsfitpy"))
-    merged_data["A_Li_tsfitpy"] = merged_data["Li_Fe_tsfitpy"] + merged_data["feh"] + 1.05
+    merged_data["A_Li_tsfitpy"] = merged_data["Li_Fe_tsfitpy"] + merged_data[f"Li_Fe_Fe_H_tsfitpy"] + 1.05
     merged_data.drop(columns=["Li_Fe_tsfitpy"], inplace=True)
-    merged_data.to_csv("merged_data_with_tsfitpy_new.csv", index=False)
+    #merged_data.to_csv("merged_data_with_tsfitpy_new.csv", index=False)
 
     # set any merged_data["A_Li"] < 0 to NaN
     merged_data["A_Li_tsfitpy"] = np.where(merged_data["A_Li_tsfitpy"] < 0, np.nan, merged_data["A_Li_tsfitpy"])
     #merged_data["O_Fe"] = np.where(merged_data["O_Fe"] >= 1.25, np.nan, merged_data["O_Fe"])
 
 
-    if True:
+    if False:
         fig, ax = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
 
         # -----------------------------------------------------------
@@ -246,6 +269,8 @@ if __name__ == '__main__':
             ax[i].plot(ref_x, ref_y, "g--")  # identity line
             sc = ax[i].scatter(x, y, c=cvals, cmap=cmap, norm=norm, s=14)  # points
 
+            print(f"{title}: bias={np.mean(x - y):.3f}, std={np.std(x - y):.3f}")
+
             # draw coloured error bars one‐by‐one
             for xi, yi, xe, ci in zip(x, y, xerr, colours):
                 ax[i].errorbar([xi], [yi], xerr=[xe], fmt="none",
@@ -269,61 +294,71 @@ if __name__ == '__main__':
         #plt.show()
         plt.close()
 
-        fig, ax = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
 
-        # -----------------------------------------------------------
-        # 1. common colour map
-        # -----------------------------------------------------------
-        cvals = merged_data["Fe_H_tsfitpy"] - merged_data["feh"]  # value we colour by
-        cmap = plt.cm.coolwarm
-        norm = plt.Normalize(cvals.min(), cvals.max())
-        colours = cmap(norm(cvals))  # RGBA for every star
+    # -----------------------------------------------------------
+    # 1. common colour map
+    # -----------------------------------------------------------
+    cvals = merged_data["Fe_H_tsfitpy"] - merged_data["feh"]  # value we colour by
+    cmap = plt.cm.coolwarm
+    norm = plt.Normalize(cvals.min(), cvals.max())
+    colours = cmap(norm(cvals))  # RGBA for every star
 
-        # -----------------------------------------------------------
-        # 2. helper list to drive the three panels
-        # -----------------------------------------------------------
-        panels = [
-            #  x                      y                     x-err                1:1 line        title
-            (merged_data["Teff"], merged_data["teff"] * 1000, merged_data["eTeff"],
-             ([3700, 7000], [3700, 7000]), "Teff"),
+    # -----------------------------------------------------------
+    # 2. helper list to drive the three panels
+    # -----------------------------------------------------------
+    panels = [
+        #  x                      y                     x-err                1:1 line        title
+        (merged_data["Teff"], merged_data["teff"] * 1000, merged_data["eTeff"], merged_data["teff_std"] * 1000,
+         ([3700, 7100], [3700, 7100]), "Teff"),
 
-            (merged_data["logg_x"], merged_data["logg"], merged_data["elogg"],
-             ([0.45, 5], [0.45, 5]), "logg"),
+        (merged_data["logg_x"], merged_data["logg"], merged_data["elogg"], merged_data["logg_std"],
+         ([0.4, 5], [0.4, 5]), "logg"),
 
-            (merged_data["Fe_H_tsfitpy"], merged_data["feh"], merged_data["Fe_H_err_Nick"],
-             ([-3.5, 0.32], [-3.5, 0.32]), "[Fe/H]"),
-        ]
+        (merged_data["Fe_H_tsfitpy"], merged_data["feh"], merged_data["Fe_H_err_tsfitpy"], merged_data["feh_std"],
+         ([-3.5, 0.32], [-3.5, 0.32]), "[Fe/H]"),
+    ]
 
-        # -----------------------------------------------------------
-        # 3. plot each panel
-        # -----------------------------------------------------------
-        for i, (x, y, xerr, (ref_x, ref_y), title) in enumerate(panels):
-            ax[i].plot(ref_x, ref_y, "g--", alpha=0.7)  # identity line
-            sc = ax[i].scatter(x, y, c='k', s=20)  # points
+    # -----------------------------------------------------------
+    # 3. plot each panel
+    # -----------------------------------------------------------\
 
-            # draw coloured error bars one‐by‐one
-            for xi, yi, xe, ci in zip(x, y, xerr, colours):
-                ax[i].errorbar([xi], [yi], xerr=None, fmt="none",
-                               capsize=3, linewidth=0.8, ecolor='k')
+    # find indices for source == "GES" or "batch1"
+    ges_sources = merged_data[merged_data["source"].isin(["GES", "batch1"])]
+    ges_indices = ges_sources.index.tolist()
+    batch1_sources = merged_data[merged_data["source"] == "batch1"]
+    batch1_indices = batch1_sources.index.tolist()
 
+    for i, (x, y, xerr, yerr, (ref_x, ref_y), title) in enumerate(panels):
+        ax[i].plot(ref_x, ref_y, "g--", alpha=0.7)  # identity line
+        #sc = ax[i].scatter(x, y, c='k', s=20)  # points
+        # plot GES in blue, batch1 in red
+        sc = ax[i].scatter(x[ges_indices], y[ges_indices], c='black', s=14, label="Benchmark")
+        sc = ax[i].scatter(x[batch1_indices], y[batch1_indices], c='red', s=14, label="Others")
 
-            print(f"{title}: bias={np.mean(x - y):.3f}, std={np.std(x - y):.3f}")
+        ax[i].errorbar(x[ges_indices], y[ges_indices], xerr=xerr[ges_indices], yerr=yerr[ges_indices],
+                        fmt="none", capsize=3, linewidth=0.8, ecolor='black')
+        ax[i].errorbar(x[batch1_indices], y[batch1_indices], xerr=xerr[batch1_indices], yerr=yerr[batch1_indices],
+                        fmt="none", capsize=3, linewidth=0.8, ecolor='red')
 
-            ax[i].set_xlabel(f"{title} (literature)", fontsize=14)
-            ax[i].set_ylabel(f"{title} (Payne)", fontsize=14)
-            #ax[i].set_title(title, fontsize=14)
-            ax[i].set_xlim(ref_x)
-            ax[i].set_ylim(ref_y)
-        ax[-1].set_xlabel(f"{title} (TSFitPy)")
-        # set all x fontsize of ticks
-        for i in range(len(ax)):
-            ax[i].tick_params(axis='both', which='major', labelsize=14)
-        # -----------------------------------------------------------
-        # 4. single colour-bar on the right
-        # -----------------------------------------------------------
-        plt.savefig("../plots/payne_stellar_param_comparison.pdf", bbox_inches='tight')
-        plt.show()
+        print(f"{title}: bias={np.mean(x - y):.3f}, std={np.std(x - y):.3f}")
 
+        ax[i].set_xlabel(f"{title} (literature)", fontsize=14)
+        ax[i].set_ylabel(f"{title} (Payne)", fontsize=14)
+        #ax[i].set_title(title, fontsize=14)
+        ax[i].set_xlim(ref_x)
+        ax[i].set_ylim(ref_y)
+    ax[-1].set_xlabel(f"{title} (TSFitPy)")
+    # legend
+    ax[0].legend(loc='upper left', fontsize=14, frameon=False)
+    # set all x fontsize of ticks
+    for i in range(len(ax)):
+        ax[i].tick_params(axis='both', which='major', labelsize=14)
+    # -----------------------------------------------------------
+    # 4. single colour-bar on the right
+    # -----------------------------------------------------------
+    plt.savefig("../plots/payne_stellar_param_comparison.pdf", bbox_inches='tight')
+    plt.show()
     # find how many elements we can plot
     elements_to_plot = []
     for i, label in enumerate(merged_data.columns):
@@ -570,15 +605,21 @@ if __name__ == '__main__':
         if element.replace("_tsfitpy", "") == "A_Li":
             y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")])  # payne
             x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0 ) # tsfitpy
-        elif element.replace("_tsfitpy", "") == "Fe_H_tsfitpy":
+            xerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"Li_Fe_err_tsfitpy"])
+            yerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"{element.replace('_tsfitpy', '_std')}"])
+        elif element.replace("_tsfitpy", "") == "Fe_H":
             y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")])
             x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0 )
+            xerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"{element.replace('_tsfitpy', '_err_tsfitpy')}"])
+            yerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"{element.replace('_tsfitpy', '_std')}"])
             solar_abundance_value = solar_abundances["Fe"]
             y = y + solar_abundance_value
             x = x + solar_abundance_value
         else:
             y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] + merged_data["feh"])
-            x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0  + merged_data["feh"])
+            x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0  + merged_data[f"{element.replace('_tsfitpy', '')}_Fe_H_tsfitpy"])
+            xerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"{element.replace('_tsfitpy', '_err_tsfitpy')}"])
+            yerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"{element.replace('_tsfitpy', '_std')}"])
             solar_abundance_value = solar_abundances[element.replace("_tsfitpy", "").split("_")[0]]
             y = y + solar_abundance_value
             x = x + solar_abundance_value
@@ -588,10 +629,14 @@ if __name__ == '__main__':
         # remove any x, y where x_std < -90
         x = np.delete(x, indices)
         y = np.delete(y, indices)
+        xerr = np.delete(xerr, indices)
+        yerr = np.delete(yerr, indices)
         # find any nan in y, and get their indices
         indices = np.where(np.isnan(y))[0]
         x = np.delete(x, indices)
         y = np.delete(y, indices)
+        xerr = np.delete(xerr, indices)
+        yerr = np.delete(yerr, indices)
 
         #ax[i].plot([-4, 0.5], [-4, 0.5], "g--")  # identity line
         #sc = ax[i].scatter(x, y, c='k', s=14)  # points
@@ -599,8 +644,8 @@ if __name__ == '__main__':
 
         ## draw coloured error bars one‐by‐one
         #for xi, yi in zip(x, y):
-        #    ax[i].errorbar([xi], [yi], fmt="none",
-        #                   capsize=3, linewidth=0.8, ecolor='k')
+        ax[i].errorbar(x, y, xerr=xerr, yerr=yerr, fmt="none",
+                       capsize=3, linewidth=0.8, ecolor='k')
 
         if element.replace("_tsfitpy", "") == "A_Li":
             ax[i].set_xlabel(f"A(Li) (TSFitPy)")

@@ -24,7 +24,7 @@ matplotlib.use("MacOSX")
 
 # Created by storm at 03.03.25
 
-def fit_one_spectrum(file, stellar_rv, folder, payne_parameters):
+def fit_one_spectrum(file, stellar_rv, folder, payne_parameters, snr=100):
     print(f"Fitting {file}")
     wavelength_obs, flux_obs = np.loadtxt(f"{folder}/{file}", usecols=(0, 1), unpack=True, dtype=float)
 
@@ -40,7 +40,7 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_parameters):
                                                h_line_core_mask_dlam=0.2)
 
     stellar_parameters = fit_stellar_parameters(stellar_parameters, payne_parameters, wavelength_obs, flux_obs,
-                                                silent=True)
+                                                silent=True, sigma_flux=1/snr)
 
     labels = payne_parameters.labels
 
@@ -57,7 +57,7 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_parameters):
 
     for element_to_fit in elements_to_fit:
         stellar_parameters = fit_one_xfe_element(element_to_fit, stellar_parameters, payne_parameters, wavelength_obs,
-                                                 flux_obs, silent=True)
+                                                 flux_obs, silent=True, sigma_flux=1/snr)
 
 
     if "/" in file:
@@ -82,9 +82,9 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_parameters):
 
     return new_row_df
 
-def _wrapper(path, folder, payne_parameters):
+def _wrapper(path, folder, payne_parameters, snr=100):
     stellar_rv = 0
-    return fit_one_spectrum(path, stellar_rv, folder, payne_parameters)
+    return fit_one_spectrum(path, stellar_rv, folder, payne_parameters, snr)
 
 if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-16-06-28-26.npz"
@@ -129,7 +129,7 @@ if __name__ == '__main__':
 
     for file in files:
         if file_to_fit in file:
-            rows = _wrapper(file, folder, payne_parameters)
+            rows = _wrapper(file, folder, payne_parameters, 10)
 
 
     end_fit_time = perf_counter()

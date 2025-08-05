@@ -514,7 +514,6 @@ def fit_teff_logg(labels, payne_coeffs, x_min, x_max, stellar_rv, wavelength_obs
         bounds=def_bounds,
         max_nfev=10e5
     )
-    print(popt)
     if not silent:
         print(f"Done fitting in {time.perf_counter() - time_start:.2f} seconds")
         print(f"Fitted teff: {popt[0]:.3f} +/- {np.sqrt(np.diag(pcov))[0]:.3f}")
