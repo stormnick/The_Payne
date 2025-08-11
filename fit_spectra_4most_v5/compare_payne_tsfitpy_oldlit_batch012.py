@@ -22,7 +22,7 @@ def rename_element(element):
         return f"[{element.split('_')[0]}/{element.split('_')[1]}]"
 
 if __name__ == '__main__':
-    payne_data = pd.read_csv("fitted_benchmark_v3.csv")
+    payne_data = pd.read_csv("fitted_benchmark_batch012_v2.csv")
     literature_data_benchmark = pd.read_csv("/Users/storm/PycharmProjects/payne/observed_spectra_to_test/alt_old_literature.csv")
     #literature_data_benchmark["source"] = "GES+batch1"
     # those with origin "-" source is batch1
@@ -111,7 +111,7 @@ if __name__ == '__main__':
     #merged_data.to_csv("merged_data.csv", index=False)
     mask = ~payne_data['spectraname'].isin(literature_data['spectraname'])
     payne_only = payne_data[mask]  # <-- the rows you’re after
-    payne_only.to_csv("payne_only_old.csv", index=False)
+    #payne_only.to_csv("payne_only_old.csv", index=False)
     #print(payne_only)
 
     #print(merged_data["source"])
@@ -166,7 +166,7 @@ if __name__ == '__main__':
     merged_data = pd.merge(merged_data, tsfitpy_data, on="spectraname_og", how="left", suffixes=("", "_tsfitpy"))
     merged_data["A_Li_tsfitpy"] = merged_data["Li_Fe_tsfitpy"] + merged_data[f"Li_Fe_Fe_H_tsfitpy"] + 1.05
     merged_data.drop(columns=["Li_Fe_tsfitpy"], inplace=True)
-    merged_data.to_csv("merged_data_with_tsfitpy_new.csv", index=False)
+    merged_data.to_csv("merged_data_with_tsfitpy_new_v2.csv", index=False)
 
     # set any merged_data["A_Li"] < 0 to NaN
     merged_data["A_Li_tsfitpy"] = np.where(merged_data["A_Li_tsfitpy"] < 0, np.nan, merged_data["A_Li_tsfitpy"])
@@ -357,7 +357,7 @@ if __name__ == '__main__':
     # -----------------------------------------------------------
     # 4. single colour-bar on the right
     # -----------------------------------------------------------
-    plt.savefig("../plots/payne_stellar_param_comparison.pdf", bbox_inches='tight')
+    #plt.savefig("../plots/payne_stellar_param_comparison.pdf", bbox_inches='tight')
     plt.show()
     # find how many elements we can plot
     elements_to_plot = []

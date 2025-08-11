@@ -88,6 +88,7 @@ def _wrapper(path, folder, payne_parameters, snr=100):
 
 if __name__ == '__main__':
     path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch01_medium_test2training_reducedlogg_altarch_2025-06-16-06-28-26.npz"
+    path_model = "/Users/storm/PycharmProjects/payne/test_network/payne_ts_4most_hr_may2025_batch012_medium_reducedlogg_altarch_notscratch_2025-08-08-11-33-02.npz"
 
     payne_coeffs, wavelength_payne, labels = load_payne(path_model)
     x_min = list(payne_coeffs[-2])
@@ -104,6 +105,7 @@ if __name__ == '__main__':
     # get all filenames in the folder
     folder = "/Users/storm/PycharmProjects/payne/observed_spectra_to_test/benchmark/"
     folder = "/Users/storm/PhD_2025/02.22 Payne/real_spectra_to_fit/converted/"
+    folder = "/Users/storm/PhD_2022-2025/Spectra/some_lowfeh_benchmark/norm_20k_degraded/"
     files = os.listdir(folder)
 
     # remove ".DS_Store"
@@ -126,6 +128,9 @@ if __name__ == '__main__':
 
     file_to_fit = "UVES_alfTau"
     file_to_fit = "HD133442"
+    file_to_fit = "hd140283_UVES_4most.txt"
+    file_to_fit = "hd122563_UVES_4most.txt"
+    file_to_fit = "hd84937_UVES_4most.txt"
 
     for file in files:
         if file_to_fit in file:

@@ -6,13 +6,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import pandas as pd
-import scipy
 import spectral_model
 from convolve import *
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 import os
 from dataclasses import dataclass, field
+from scipy import integrate
 
 matplotlib.use("MacOSX")
 # plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyle")
@@ -173,6 +173,33 @@ class StellarParameters:
                 vals[key] = p.value
                 sigs[key] = p.std
         return vals, sigs
+
+
+
+def calculate_equivalent_width(wavelength: np.ndarray, normalised_flux: np.ndarray, left_bound: float, right_bound: float) -> float:
+    """
+    Calculates the equivalent width of a line based on the input parameters
+    :param wavelength: Wavelength array
+    :param normalised_flux: Normalised flux array
+    :param left_bound: Left bound of the line
+    :param right_bound: Right bound of the line
+    :return: Equivalent width of the line
+    """
+    # first cut wavelength and flux to the bounds
+    try:
+        normalised_flux = normalised_flux[np.logical_and(wavelength >= left_bound, wavelength <= right_bound)]
+        wavelength = wavelength[np.logical_and(wavelength >= left_bound, wavelength <= right_bound)]
+    except TypeError:
+        return -9999
+    line_func = interp1d(wavelength, normalised_flux, kind='linear', assume_sorted=True, fill_value=1, bounds_error=False)
+    total_area = (right_bound - left_bound) * 1.0   # continuum
+    try:
+        integration_points = wavelength[np.logical_and.reduce((wavelength > left_bound, wavelength < right_bound))]
+        area_under_line = integrate.quad(line_func, left_bound, right_bound, points=integration_points, limit=len(integration_points) * 5)
+    except ValueError:
+        return -9999
+
+    return (total_area - area_under_line[0]) * 1000
 
 def process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores, h_line_core_mask_dlam=0.5, extra_payne_cut=10):
     """
@@ -531,11 +558,11 @@ def fit_stellar_parameters(stellar_parameters: StellarParameters, payne_paramete
     h_line_cores = h_line_cores['ll']
     h_line_cut = [15] * len(h_line_cores)
     h_line_payne_cut = [20] * len(h_line_cores)
-    mg_fe_lines = pd.read_csv("../linemasks/mg_triplet.csv")
+    mg_fe_lines = pd.read_csv("../linemasks/mg.csv")
     mg_fe_lines = mg_fe_lines['ll']
     mg_line_cut = [1] * len(mg_fe_lines)
     mg_line_payne_cut = [1.25] * len(mg_fe_lines)
-    ca_fe_lines = pd.read_csv("../linemasks/ca_triplet.csv")
+    ca_fe_lines = pd.read_csv("../linemasks/ca.csv")
     ca_fe_lines = ca_fe_lines['ll']
     ca_line_cut = [1] * len(ca_fe_lines)
     ca_line_payne_cut = [1.25] * len(ca_fe_lines)
@@ -584,7 +611,7 @@ def fit_stellar_parameters(stellar_parameters: StellarParameters, payne_paramete
         flux_obs_cut_to_lines,
         sigma=sigma_flux,
         p0=lsq.p0,
-        absolute_sigma=True,
+        absolute_sigma=False,
         bounds=lsq.bounds,
         max_nfev=10e5
     )
@@ -624,7 +651,8 @@ def scale_dlam(dlam, broadening):
 
     return dlam * scaling
 
-def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParameters, payne_parameters: PayneParams, wavelength_obs, flux_obs, sigma_flux=None, silent=False):
+def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParameters, payne_parameters: PayneParams,
+                        wavelength_obs, flux_obs, sigma_flux=None, silent=False, check_lines_ew=True):
     if element_to_fit == "A_Li":
         path = f"../linemasks/li.csv"
     else:
@@ -641,7 +669,7 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
         element_lines = [5000]
         dlam = [2000]
 
-    dlam = scale_dlam(dlam, stellar_parameters.vsini.value + stellar_parameters.vmac.value)
+    dlam = list(scale_dlam(dlam, stellar_parameters.vsini.value + stellar_parameters.vmac.value))
 
     lsq = stellar_parameters.build_lsq_inputs(payne_parameters.labels, [element_to_fit])
 
@@ -652,7 +680,7 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
         return stellar_parameters
 
     wavelength_obs_cut_to_lines, flux_obs_cut_to_lines, wavelength_payne_cut, combined_mask_payne = cut_to_just_lines(
-        wavelength_obs, flux_obs, payne_parameters.wavelength_payne, element_lines, 0, obs_cut_aa=list(dlam), payne_cut_aa=list(np.asarray(dlam) * 1.5))
+        wavelength_obs, flux_obs, payne_parameters.wavelength_payne, element_lines, 0, obs_cut_aa=dlam, payne_cut_aa=list(np.asarray(dlam) * 1.5))
 
     model_func = make_model_spectrum_for_curve_fit(
         payne_parameters.payne_coeffs,
@@ -673,12 +701,53 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
             wavelength_obs_cut_to_lines,
             flux_obs_cut_to_lines,
             sigma=sigma_flux,
-            absolute_sigma=True,
+            absolute_sigma=False,
             p0=lsq.p0,
             bounds=lsq.bounds,
         )
         fitted_value = float(popt[0])
         fitted_error = float(np.sqrt(np.diag(pcov))[0])
+
+        # caclulate equivalent width of the line compared to minimum
+        if check_lines_ew:
+            real_labels = stellar_parameters.build_lsq_inputs(payne_parameters.labels, [element_to_fit]).input_values[:-3]
+            idx_element = payne_parameters.labels.index(element_to_fit)
+            real_labels[idx_element] = fitted_value
+            scaled_labels = (real_labels - payne_parameters.payne_coeffs[-2]) / (payne_parameters.payne_coeffs[-1] - payne_parameters.payne_coeffs[-2]) - 0.5
+            payne_fitted_spectra = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
+                                                                                NN_coeffs=payne_parameters.payne_coeffs, pixel_limits=combined_mask_payne)
+            real_labels[idx_element] = payne_parameters.payne_coeffs[-2][idx_element]
+            scaled_labels = (real_labels - payne_parameters.payne_coeffs[-2]) / (payne_parameters.payne_coeffs[-1] - payne_parameters.payne_coeffs[-2]) - 0.5
+            payne_fitted_spectra_no_element = spectral_model.get_spectrum_from_neural_net(
+                scaled_labels=scaled_labels,
+                NN_coeffs=payne_parameters.payne_coeffs, pixel_limits=combined_mask_payne
+            )
+
+            ew_lines = []
+            if len(dlam) == 1:
+                dlam = [dlam[0]] * len(element_lines)
+            for line, dlam_one in zip(element_lines, dlam):
+                try:
+                    ew_line = calculate_equivalent_width(
+                        wavelength_payne_cut,
+                        payne_fitted_spectra,
+                        line - dlam_one,
+                        line + dlam_one
+                    )
+                    ew_line_no_element = calculate_equivalent_width(
+                        wavelength_payne_cut,
+                        payne_fitted_spectra_no_element,
+                        line - dlam_one,
+                        line + dlam_one
+                    )
+                    ew_lines.append(ew_line - ew_line_no_element)
+                except ValueError:
+                    pass
+            avg_ew = np.mean(ew_lines)
+            if avg_ew < 1 and np.max(ew_lines) < 2:
+                #print(f"Equivalent width of {element_to_fit} is too low: {avg_ew:.2f}, max={np.max(ew_lines):.2f}")
+                #fitted_value = 0
+                fitted_error = -99
     except ValueError:
         print(f"Fitting failed for element {element_to_fit}")
 
@@ -696,7 +765,6 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
         fitted_error = -99
     elif np.abs(fitted_value - payne_parameters.x_max[index]) <= 0.02:
         fitted_value = payne_parameters.x_max[index] - (payne_parameters.x_max[index] - payne_parameters.x_min[index]) / 3
-        fitted_value = 0
         fitted_error = -99
     elif np.abs(fitted_value - payne_parameters.x_min[index]) <= 0.02:
         fitted_value = payne_parameters.x_min[index] + (payne_parameters.x_max[index] - payne_parameters.x_min[index]) / 3
@@ -774,7 +842,7 @@ def plot_fitted_payne(wavelength_payne, final_parameters, payne_coeffs, waveleng
         wavelength_obs_cut.extend(wavelength_obs[mask])
         flux_obs_cut.extend(flux_obs[mask])
 
-    #np.savetxt("fitted_spectrum_.txt", np.vstack((wavelength_payne_plot * (1 + (doppler_shift / 299792.)), payne_fitted_spectra)).T, fmt='%.6f', header='wavelength_payne flux_payne')
+    np.savetxt("fitted_spectrum_.txt", np.vstack((wavelength_payne_plot * (1 + (doppler_shift / 299792.)), payne_fitted_spectra)).T, fmt='%.6f', header='wavelength_payne flux_payne')
 
     plt.figure(figsize=(18, 6))
     plt.scatter(wavelength_obs_cut, flux_obs_cut, label="Observed", s=3, color='k')
