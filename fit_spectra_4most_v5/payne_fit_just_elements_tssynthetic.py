@@ -32,15 +32,16 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_parameters, snr_to_do, true
     flux_obs = spectra[1] / continuum[1]
     h_line_cores = pd.read_csv("../linemasks/h_cores.csv")
     h_line_cores = list(h_line_cores['ll'])
-    wavelength_obs, flux_obs = process_spectra(wavelength_payne, wavelength_obs, flux_obs, h_line_cores,
+    wavelength_obs, flux_obs = process_spectra(payne_parameters.wavelength_payne, wavelength_obs, flux_obs, h_line_cores,
                                                h_line_core_mask_dlam=0.2)
     stellar_parameters = create_default_stellar_parameters(payne_parameters)
-    stellar_parameters.teff = true_parameter['teff'] / 1000
-    stellar_parameters.logg = true_parameter['logg']
-    stellar_parameters.feh = true_parameter['feh']
-    stellar_parameters.vmic = true_parameter['vmic']
-    stellar_parameters.vsini = true_parameter['vsini']
-    stellar_parameters.vmac = 0
+    stellar_parameters.teff.value = true_parameter['teff'] / 1000
+    stellar_parameters.logg.value = true_parameter['logg']
+    stellar_parameters.feh.value = true_parameter['feh']
+    stellar_parameters.vmic.value = true_parameter['vmic']
+    stellar_parameters.vsini.value = true_parameter['vsini']
+
+    labels = payne_parameters.labels
 
     elements_to_fit = []
     for i, label in enumerate(labels):
@@ -96,7 +97,7 @@ if __name__ == '__main__':
     resolution_val = None
 
     # get all filenames in the folder
-    snr_to_do = 1000
+    snr_to_do = 50
     folder_spectra = f"/Users/storm/PycharmProjects/payne/ts_nlte_grid_july2024/snr{int(snr_to_do)}/"
     folder_spectra = f"/Users/storm/PhD_2025/spectra_4most/batch0_nlte_4mostified_v3/"
     # only take those with "hrs" in it
@@ -106,7 +107,7 @@ if __name__ == '__main__':
     ids = sorted({f.split('.')[0] for f in all_files})
 
     random.seed(42)
-    chosen_ids = set(random.sample(ids, 50))
+    chosen_ids = set(random.sample(ids, 100))
 
     true_values = pd.read_csv("/Users/storm/PycharmProjects/payne/ts_nlte_grid_apr2024/spectra_parameters_nlte_batch0_v3.csv")
     true_values["spectraname"] = true_values["specname"]
@@ -161,5 +162,5 @@ if __name__ == '__main__':
     )
 
     fitted_values = fitted_values.round(5)
-    fitted_values.to_csv(f"fitted_synthetic_just_elements.csv", index=False)
+    fitted_values.to_csv(f"fitted_synthetic_just_elements_{snr_to_do}.csv", index=False)
 

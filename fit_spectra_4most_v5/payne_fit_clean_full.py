@@ -748,7 +748,7 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
                 #print(f"Equivalent width of {element_to_fit} is too low: {avg_ew:.2f}, max={np.max(ew_lines):.2f}")
                 #fitted_value = 0
                 fitted_error = -99
-    except ValueError:
+    except (ValueError, RuntimeError):
         print(f"Fitting failed for element {element_to_fit}")
 
         fitted_value = -99
