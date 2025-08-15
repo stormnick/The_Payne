@@ -95,6 +95,9 @@ if __name__ == '__main__':
     # drop Li_Fe
     data_all = data_all.drop(columns=["Li_Fe"])
 
+    # print min teff and max teff
+    print(f"Teff min: {data_all['teff'].min()}, Teff max: {data_all['teff'].max()}")
+
     # plot distributions of parameters
     # teff-logg, feh-vmic, all-elements-feh
     fig, axs = plt.subplots(4, 5, figsize=(12, 9))

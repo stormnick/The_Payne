@@ -12,7 +12,7 @@ plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyl
 
 
 if __name__ == '__main__':
-    data = pd.read_csv("fitted_benchmark_v3.csv")
+    data = pd.read_csv("fitted_benchmark_batch012_v2.csv")
 
     # remove rows where spectraname == "NARVAL_61CygB.txt" or "NARVAL_61CygA.txt"
     data = data[~data["spectraname"].isin(["NARVAL_61CygB.txt", "NARVAL_61CygA.txt"])]
@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
     plt.xlabel(r"T$_{\rm eff}$ [K]")
     plt.ylabel("logg [dex]")
-    plt.xlim(3650, 7000)
+    plt.xlim(3550, 7000)
     plt.ylim(0.2, 4.9)
     plt.gca().invert_yaxis()
     plt.gca().invert_xaxis()
