@@ -403,7 +403,7 @@ def make_model_spectrum_for_curve_fit(payne_coeffs, wavelength_payne, input_valu
             pixel_limits=pixel_limits
         )
 
-        wavelength_payne_ = wavelength_payne
+        wavelength_payne_ = wavelength_payne.astype(np.float64)
 
         # debug: preview the spectrum before convolutions
         #plt.figure(figsize=(14, 7))
@@ -599,7 +599,8 @@ def fit_stellar_parameters(stellar_parameters: StellarParameters, payne_paramete
         wavelength_payne_cut,
         lsq.input_values,
         resolution_val=payne_parameters.resolution_val,
-        pixel_limits=combined_mask_payne
+        pixel_limits=combined_mask_payne,
+        flux_obs=flux_obs_cut_to_lines
     )
     if not silent:
         print("Fitting...")
@@ -696,6 +697,10 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
         time_start = time.perf_counter()
 
     try:
+        #eps32 = np.finfo(np.float32).eps  # ~1.19e-7
+        ## pick a step safely above float32 ULP·scale; array form adapts per-parameter scale
+        #diff_step = np.maximum(3e-4, 10 * eps32) * np.maximum(1.0, np.abs(lsq.p0))
+
         popt, pcov = curve_fit(
             model_func,
             wavelength_obs_cut_to_lines,
@@ -704,6 +709,7 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
             absolute_sigma=False,
             p0=lsq.p0,
             bounds=lsq.bounds,
+            #diff_step=diff_step
         )
         fitted_value = float(popt[0])
         fitted_error = float(np.sqrt(np.diag(pcov))[0])
@@ -743,9 +749,11 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
                     ew_lines.append(ew_line - ew_line_no_element)
                 except ValueError:
                     pass
+            print(fitted_value)
+            print(ew_lines)
             avg_ew = np.mean(ew_lines)
             if avg_ew < 1 and np.max(ew_lines) < 2:
-                #print(f"Equivalent width of {element_to_fit} is too low: {avg_ew:.2f}, max={np.max(ew_lines):.2f}")
+                print(f"Equivalent width of {element_to_fit} is too low: {avg_ew:.2f}, max={np.max(ew_lines):.2f}")
                 #fitted_value = 0
                 fitted_error = -99
     except (ValueError, RuntimeError):
@@ -897,7 +905,23 @@ if __name__ == '__main__':
     )
 
     stellar_parameters = create_default_stellar_parameters(payne_parameters)
-    stellar_parameters = fit_stellar_parameters(stellar_parameters, payne_parameters, wavelength_obs, flux_obs, silent=False)
+
+    #stellar_parameters.teff.value = 5.777
+    #stellar_parameters.logg.value = 4.44
+    #stellar_parameters.feh.value = 0.0
+    #stellar_parameters.vmic.value = 0.0
+    #stellar_parameters.teff.fit = False
+    #stellar_parameters.logg.fit = False
+    #stellar_parameters.feh.fit = False
+    #stellar_parameters.vmic.fit = False
+    #stellar_parameters.abundances["Mg_Fe"].value = 0.0
+    #stellar_parameters.abundances["Mg_Fe"].fit = False
+    #stellar_parameters.abundances["Ca_Fe"].value = 0.0
+    #stellar_parameters.abundances["Ca_Fe"].fit = False
+
+    start_time = time.perf_counter()
+
+    stellar_parameters = fit_stellar_parameters(stellar_parameters, payne_parameters, wavelength_obs, flux_obs, silent=True)
 
 
     elements_to_fit = []
@@ -906,9 +930,28 @@ if __name__ == '__main__':
             elements_to_fit.append(label)
 
     for element_to_fit in elements_to_fit:
-        stellar_parameters = fit_one_xfe_element(element_to_fit, stellar_parameters, payne_parameters, wavelength_obs, flux_obs, silent=False)
-
+        stellar_parameters = fit_one_xfe_element(element_to_fit, stellar_parameters, payne_parameters, wavelength_obs, flux_obs, silent=True)
+    end_time = time.perf_counter()
+    print(f"Total fitting time: {end_time - start_time:.2f} seconds")
     print(stellar_parameters)
+    exit()
+    print(f"Total fitting time: {end_time - start_time:.2f} seconds")
+
+    real_labels = [5.777, 4.44, 0.0, 1.0] + [0.0] * (len(labels) - 4)
+    scaled_labels = (real_labels - payne_coeffs[-2]) / (payne_coeffs[-1] - payne_coeffs[-2]) - 0.5
+
+    start_time = time.perf_counter()
+    for i in range(100):
+        payne_fitted_spectra = spectral_model.get_spectrum_from_neural_net(scaled_labels=scaled_labels,
+                                                                            NN_coeffs=payne_coeffs)
+    end_time = time.perf_counter()
+    start_time2 = time.perf_counter()
+    for i in range(100):
+        wavelength_payne_plot, payne_fitted_spectra2 = apply_on_segments(wavelength_payne, payne_fitted_spectra, conv_rotation, 3)
+    end_time2 = time.perf_counter()
+    print(f"Payne spectrum calculation time: {end_time - start_time:.2f} seconds + convolution time: {end_time2 - start_time2 + (end_time - start_time):.2f} seconds")
+
+    #exit()
 
     final_params = stellar_parameters.build_lsq_inputs(labels, []).input_values
     vmac = final_params[-2]

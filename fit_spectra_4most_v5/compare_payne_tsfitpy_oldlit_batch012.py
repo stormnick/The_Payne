@@ -219,9 +219,9 @@ if __name__ == '__main__':
             ax[i].set_ylabel(f"{title} (Payne)")
             ax[i].set_title(title)
 
-        handles, labels = sc.legend_elements(prop="colors")
+        #handles, labels = sc.legend_elements(prop="colors")
         # replace numeric labels with original category names
-        ax[-1].legend(handles, uniques)
+        #ax[-1].legend(handles, uniques)
 
         # -----------------------------------------------------------
         # 4. single colour-bar on the right
@@ -233,7 +233,7 @@ if __name__ == '__main__':
         #    label=r"$\Delta\mathrm{[Fe/H]}\;(\mathrm{Soubiran}-\mathrm{Payne})$"
         #)
 
-        #plt.show()
+        plt.show()
         plt.close()
 
 
@@ -291,7 +291,7 @@ if __name__ == '__main__':
             label=r"$\Delta\mathrm{[Fe/H]}\;(\mathrm{TSFitPy}-\mathrm{Payne})$"
         )
 
-        #plt.show()
+        plt.show()
         plt.close()
 
     fig, ax = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
@@ -324,7 +324,7 @@ if __name__ == '__main__':
     # -----------------------------------------------------------\
 
     # find indices for source == "GES" or "batch1"
-    ges_sources = merged_data[merged_data["source"].isin(["GES", "batch1"])]
+    ges_sources = merged_data[merged_data["source"].isin(["GES"])]
     ges_indices = ges_sources.index.tolist()
     batch1_sources = merged_data[merged_data["source"] == "batch1"]
     batch1_indices = batch1_sources.index.tolist()
@@ -341,7 +341,9 @@ if __name__ == '__main__':
         ax[i].errorbar(x[batch1_indices], y[batch1_indices], xerr=xerr[batch1_indices], yerr=yerr[batch1_indices],
                         fmt="none", capsize=3, linewidth=0.8, ecolor='red')
 
-        print(f"{title}: bias={np.mean(x - y):.3f}, std={np.std(x - y):.3f}")
+        print(f"{title}: bias={np.mean(x - y):.3f}, std={np.std(x - y):.10f}")
+        print(f"{title} benchmark: bias={np.mean(x[ges_indices] - y[ges_indices]):.3f}, std={np.std(x[ges_indices] - y[ges_indices]):.10f}")
+        print(f"{title} batch1: bias={np.mean(x[batch1_indices] - y[batch1_indices]):.3f}, std={np.std(x[batch1_indices] - y[batch1_indices]):.10f}")
 
         ax[i].set_xlabel(f"{title} (literature)", fontsize=14)
         ax[i].set_ylabel(f"{title} (Payne)", fontsize=14)
@@ -672,3 +674,97 @@ if __name__ == '__main__':
 
     plt.savefig("../plots/a_x_comparison.pdf", bbox_inches='tight')
     plt.show()
+    plt.close()
+
+    # subplot
+    fig, ax = plt.subplots(rows, columns, figsize=(rows * 4, columns * 1), constrained_layout=True)
+    ax = ax.flatten()  # flatten the 2D array to 1D for easier indexing
+    print(elements_to_plot)
+    for i, element in enumerate(elements_to_plot):
+        x = np.asarray(merged_data["feh"])
+
+        # find element name in solar_abundances
+        if element.replace("_tsfitpy", "") == "A_Li":
+            y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")])  # payne
+            x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0 ) # tsfitpy
+            xerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"Li_Fe_err_tsfitpy"])
+            yerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"{element.replace('_tsfitpy', '_std')}"])
+        elif element.replace("_tsfitpy", "") == "Fe_H":
+            y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")])
+            x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0 )
+            xerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"{element.replace('_tsfitpy', '_err_tsfitpy')}"])
+            yerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"{element.replace('_tsfitpy', '_std')}"])
+            solar_abundance_value = solar_abundances["Fe"]
+            y = y + solar_abundance_value
+            x = x + solar_abundance_value
+        else:
+            y = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] + merged_data["feh"])
+            x = np.asarray(merged_data[element]  + merged_data[element.replace("_tsfitpy", "")] * 0  + merged_data[f"{element.replace('_tsfitpy', '')}_Fe_H_tsfitpy"])
+            xerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"{element.replace('_tsfitpy', '_err_tsfitpy')}"])
+            yerr = np.asarray(merged_data[element] * 0 + merged_data[element.replace("_tsfitpy", "")] * 0 + merged_data[f"{element.replace('_tsfitpy', '_std')}"])
+            solar_abundance_value = solar_abundances[element.replace("_tsfitpy", "").split("_")[0]]
+            y = y + solar_abundance_value
+            x = x + solar_abundance_value
+        x_std = merged_data[f"{element.replace('_tsfitpy', '')}_std"]
+        # find any with std < -90, and get their indices
+        indices = np.where(x_std < -90)[0]
+        # remove any x, y where x_std < -90
+        x = np.delete(x, indices)
+        y = np.delete(y, indices)
+        xerr = np.delete(xerr, indices)
+        yerr = np.delete(yerr, indices)
+        # find any nan in y, and get their indices
+        indices = np.where(np.isnan(y))[0]
+        x = np.delete(x, indices)
+        y = np.delete(y, indices)
+        xerr = np.delete(xerr, indices)
+        yerr = np.delete(yerr, indices)
+
+        # Define bins over x_true
+        x_true = x.copy()
+        residuals = (y - x).copy()
+        num_bins = 10
+        bins = np.linspace(x_true.min(), x_true.max(), num_bins + 1)
+        bin_centers = 0.5 * (bins[:-1] + bins[1:])
+
+        residuals_in_bins = []
+        for j in range(num_bins):
+            mask = (x_true >= bins[j]) & (x_true < bins[j + 1])
+            residuals_in_bins.append(residuals[mask])
+
+        #ax[i].plot([-4, 0.5], [-4, 0.5], "g--")  # identity line
+        #sc = ax[i].scatter(x, y, c='k', s=14)  # points
+        sc = ax[i].scatter(x, y, c='k', s=14)
+
+        ## draw coloured error bars one‐by‐one
+        #for xi, yi in zip(x, y):
+        ax[i].errorbar(x, y, xerr=xerr, yerr=yerr, fmt="none",
+                       capsize=3, linewidth=0.8, ecolor='k')
+
+        if element.replace("_tsfitpy", "") == "A_Li":
+            ax[i].set_xlabel(f"A(Li) (TSFitPy)")
+            ax[i].set_ylabel(f"A(Li) (Payne)")
+        elif element.replace("_tsfitpy", "") == "Fe_H":
+            ax[i].set_xlabel(f"A(Fe) (TSFitPy)")
+            ax[i].set_ylabel(f"A(Fe) (Payne)")
+        else:
+            ax[i].set_xlabel(f"A({rename_element(element).replace('/Fe]', '').replace('[', '')}) (TSFitPy)")
+            ax[i].set_ylabel(f"A({rename_element(element).replace('/Fe]', '').replace('[', '')}) (Payne)")
+        #ax[i].set_title(f"bias={np.mean(x - y):.3f}, std={np.std(x - y):.3f}")
+
+        # text in each one with the std
+        ax[i].text(0.4, 0.25, f"bias={np.mean(x - y):.3f}\nstd={np.std(x - y):.3f}", transform=ax[i].transAxes,
+                   fontsize=9, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.0))
+        ax[i].boxplot(residuals_in_bins, positions=bin_centers, widths=0.5)
+
+        # draw one-to-one line
+        combined = np.concatenate((x, y))
+
+        ax[i].plot([np.min(combined), np.max(combined)], [np.min(combined), np.max(combined)], "g--", alpha=0.7)
+
+        #ax[i].set_ylim(-0.5,1)
+        #ax[i].set_xlim(-3.2, 0.5)
+
+    #plt.savefig("../plots/a_x_comparison.pdf", bbox_inches='tight')
+    plt.show()
+

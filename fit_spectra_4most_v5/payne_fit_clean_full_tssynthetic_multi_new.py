@@ -154,7 +154,7 @@ if __name__ == '__main__':
     )
 
     fitted_values = fitted_values.round(5)
-    fitted_values.to_csv(f"fitted_benchmark_batch012_v2.csv", index=False)
+    fitted_values.to_csv(f"fitted_benchmark_batch012_v4_test.csv", index=False)
 
     end_fit_time = perf_counter()
     print(f"Fitting completed in {(end_fit_time - start_fit_time) / 60:.2f} min.")

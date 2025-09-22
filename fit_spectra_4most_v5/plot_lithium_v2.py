@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import pandas as pd
+import fit_systematic_error
 
 matplotlib.use("MacOSX")
 plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyle")
@@ -12,7 +13,9 @@ plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyl
 
 
 if __name__ == '__main__':
-    data = pd.read_csv("merged_data_with_tsfitpy_new.csv")
+    data = pd.read_csv("merged_data_with_tsfitpy_new_v2.csv")
+
+    sun_xfe, sun_ali = data[data["spectraname"] == "HARPS_Sun-3_Vesta"]["feh"].values[0], data[data["spectraname"] == "HARPS_Sun-3_Vesta"]["A_Li"].values[0]
 
     red_curve = pd.read_csv("extracted_red.csv")
     blue_curve = pd.read_csv("extracted_blue.csv")
@@ -61,7 +64,7 @@ if __name__ == '__main__':
     # 2 subplots: A(Li) and Li/Fe
     fig, axs = plt.subplots(1, 1, figsize=(6.5, 6), sharex=True)
     axs.scatter(feh_plot, ali_payne, s=40, edgecolor='none', c='k')
-    axs.errorbar(feh_plot, ali_payne, xerr=xerr_plot, yerr=yerr_plot, fmt='none', ecolor='k', elinewidth=1, capsize=3)
+    axs.errorbar(feh_plot, ali_payne, xerr=xerr_plot + fit_systematic_error.feh_error, yerr=yerr_plot + fit_systematic_error.A_Li_error, fmt='none', ecolor='k', elinewidth=1, capsize=3)
     axs.set_ylabel(r"A(Li)", fontsize=fontsize)
     axs.set_xlim(-4.0, 0.4)
     axs.set_ylim(0.0, 3.5)
@@ -77,6 +80,10 @@ if __name__ == '__main__':
     axs.legend(loc='upper left', fontsize=14, frameon=False, ncol=2, #bbox_to_anchor=(-0.03, 1.02),
                      handlelength=3, handletextpad=0.3, columnspacing=0.0,
                     labelspacing=0.15)
+
+    # plot sun as a star symbol
+    axs.scatter(sun_xfe, sun_ali, marker='*', s=300, c='orange', edgecolor='k', label='Sun', zorder=5)
+    axs.text(sun_xfe + 0.22, sun_ali, 'Sun', fontsize=12, verticalalignment='center', horizontalalignment='center', color='darkorange')
 
     # change all fontsizes
     axs.tick_params(axis='both', which='major', labelsize=fontsize)

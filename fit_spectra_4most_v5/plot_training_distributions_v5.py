@@ -11,6 +11,7 @@ from mpl_scatter_density import ScatterDensityAxes
 import scipy.ndimage as ndi
 from fastkde import fastKDE
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator
+from matplotlib.colors import Normalize
 
 matplotlib.use("MacOSX")
 plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyle")
@@ -79,6 +80,13 @@ def return_density_plot(fig, x, y, axarr_to_plot):
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
     axarr_to_plot.imshow(H.T, extent=extent, origin='lower', aspect='auto', cmap='plasma_r',
                          norm=mcolors.LogNorm(vmin=1, vmax=H.max()), interpolation='bilinear')
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
+from matplotlib.colors import Normalize
+MIN_COUNT = 20      # bins with < MIN_COUNT will be white
+MAX_COUNT = 1000    # bins with > MAX_COUNT will use the max colour
 
 if __name__ == '__main__':
     data1 = pd.read_csv("spectra_parameters_6may2025_batch0.csv")
@@ -86,25 +94,19 @@ if __name__ == '__main__':
     data3 = pd.read_csv("spectra_parameters_6may2025_batch2.csv")
     data_all = pd.concat([data1, data2, data3], ignore_index=True)
 
-    # print how many rows
     print(f"data1: {len(data1)} rows, data2: {len(data2)} rows, data3: {len(data3)} rows, data_all: {len(data_all)} rows")
 
-    # only take data_all with logg <= 5.0 and >= 0.5
     data_all = data_all[(data_all['logg'] <= 5.0) & (data_all['logg'] >= 0.5)]
     data_all["A_Li"] = data_all["Li_Fe"] + data_all["feh"] + 1.05
-    # drop Li_Fe
     data_all = data_all.drop(columns=["Li_Fe"])
 
-    # print min teff and max teff
     print(f"Teff min: {data_all['teff'].min()}, Teff max: {data_all['teff'].max()}")
 
-    # plot distributions of parameters
-    # teff-logg, feh-vmic, all-elements-feh
-    fig, axs = plt.subplots(4, 5, figsize=(12, 9))
+    fig, axs = plt.subplots(5, 4, figsize=(10, 11))
+    axs = axs.flatten()
 
     alpha = 0.16
 
-    axs = axs.flatten()
     axs[0].scatter(data_all['teff'], data_all['logg'], s=0.01, alpha=alpha, c='k', rasterized=True)
     axs[0].set_xlabel('Teff [K]', fontsize=14)
     axs[0].set_ylabel('logg', fontsize=14)
@@ -112,75 +114,88 @@ if __name__ == '__main__':
     axs[0].invert_xaxis()
 
     axs[1].scatter(data_all['feh'], data_all['logg'], s=0.01, alpha=alpha, c='k', rasterized=True)
-    #axs[1].set_xlabel('[Fe/H]')
-    #axs[1].set_ylabel('logg')
     axs[1].text(0.07, 0.91, "logg", transform=axs[1].transAxes, ha='left', va='top', fontsize=16, color='white')
 
-    axs[2].scatter(data_all['feh'], data_all['vmic'], s=0.01, alpha=alpha, c='k', rasterized=True)
-    #axs[2].set_xlabel('[Fe/H]')
-    axs[2].text(0.07, 0.91, "vmic [km/s]", transform=axs[2].transAxes, ha='left', va='top', fontsize=16, color='white')
+    #axs[2].scatter(data_all['feh'], data_all['vmic'], s=0.01, alpha=alpha, c='k', rasterized=True)
+    axs[2].hist(data_all['vmic'], bins=15, range=(np.min(data_all['vmic']), np.max(data_all['vmic'])), histtype='bar', color='gray', alpha=0.6, density=False, rasterized=True)
 
-    elements = data_all.columns[6:]
-    # order them
+    axs[2].text(0.07, 0.21, "vmic [km/s]", transform=axs[2].transAxes, ha='left', va='top', fontsize=16, color='k')
 
+    # --- shared colour mapping for ALL panels (persistent colouring) ---
+    cmap = plt.cm.get_cmap("plasma_r").copy()
+    cmap.set_bad("white")  # NaNs (masked bins) drawn as white
+    norm = Normalize(vmin=MIN_COUNT, vmax=MAX_COUNT, clip=True)
+
+    # elements start at column 6 in your file
     for i, element in enumerate(data_all.columns[6:]):
-        axs[i + 3].scatter(data_all['feh'], data_all[element], s=0.01, alpha=alpha, c='k', rasterized=True)
+        # raw 2D histogram in *counts*
+
+        axs[i + 3].hist(data_all[element], bins=15, range=(np.min(data_all[element]), np.max(data_all[element])), histtype='bar', color='gray', alpha=0.6, density=False, rasterized=True)
+
+        """counts, xedges, yedges = np.histogram2d(
+            data_all['feh'],
+            data_all[element],
+            bins=50,
+            range=[[-5.1, 0.51],
+                   [np.min(data_all[element]) - 0.06,
+                    np.max(data_all[element]) + 0.06]]
+        )
+
+        # mask low-occupancy bins to force white, and clip very high bins
+        counts = np.where(counts < MIN_COUNT, np.nan, counts)
+        counts = np.clip(counts, None, MAX_COUNT)
+
+        X, Y = np.meshgrid(xedges, yedges)
+        im = axs[i + 3].pcolormesh(
+            X, Y, counts.T,
+            cmap=cmap, norm=norm,
+            shading='auto',
+            rasterized=True
+        )"""
 
         dist_width = np.max(data_all[element]) - np.min(data_all[element])
-
-        # put text top left with the element
-        if element == "A_Li":
-            text = f'A(Li)'
-        else:
-            text =  f'[{element.replace("_Fe", "/Fe]")}'
-        axs[i + 3].text(0.07, 0.91, text, transform=axs[i + 3].transAxes, ha='left', va='top', fontsize=16, color='white')
+        text = 'A(Li)' if element == "A_Li" else f'[{element.replace("_Fe", "/Fe]")}'
+        axs[i + 3].text(0.07, 0.21, text, transform=axs[i + 3].transAxes,
+                        ha='left', va='top', fontsize=16, color='black')
 
         if dist_width <= 1.8:
-            axs[i + 3].yaxis.set_major_locator(MultipleLocator(0.5))  # dy = 5
-            axs[i + 3].yaxis.set_minor_locator(MultipleLocator(0.1))
+            axs[i + 3].xaxis.set_major_locator(MultipleLocator(0.5))
+            axs[i + 3].xaxis.set_minor_locator(MultipleLocator(0.1))
         else:
-            axs[i + 3].yaxis.set_major_locator(MultipleLocator(1))  # dy = 5
-            axs[i + 3].yaxis.set_minor_locator(MultipleLocator(0.2))
-        axs[i + 3].set_xlim(-5.1, 0.51)
-        axs[i + 3].set_ylim(np.min(data_all[element]) - 0.06, np.max(data_all[element]) + 0.06)
+            axs[i + 3].xaxis.set_major_locator(MultipleLocator(1))
+            axs[i + 3].xaxis.set_minor_locator(MultipleLocator(0.2))
 
-    # --- turn the flat list back into a 4×5 grid --------------------------
-    axs2d = axs.reshape(4, 5)  # easier to reason in rows/cols
+        #axs[i + 3].set_xlim(-5.1, 0.51)
+        axs[i + 3].set_xlim(np.min(data_all[element]) - 0.06,
+                            np.max(data_all[element]) + 0.06)
 
-    # ---------------------------------------------------------------------
-    # 1. kill the vertical gaps and keep a little horizontal breathing room
-    fig.subplots_adjust(hspace=0.00,  # no space between rows
-                        wspace=0.25)  # tweak horizontally to taste
+    # --- make a single colourbar on the right for all subplots -----------
+    #cbar = fig.colorbar(im, ax=axs.reshape(-1), pad=0.02)  # uses shared norm/cmap
+    #cbar.set_label("Count per bin")
 
-    # 2. first subplot: ticks + label at the *top*, none at the bottom
+    # --- layout/ticks tweaks (unchanged logic) ---------------------------
+    axs2d = axs.reshape(4, 5)
+    fig.subplots_adjust(wspace=0.35)
+
     ax00 = axs2d[0, 0]
     ax00.xaxis.set_label_position('top')
     ax00.xaxis.tick_top()
-    ax00.tick_params(axis='x', labelbottom=False)  # hide the bottom ticks
+    ax00.tick_params(axis='x', labelbottom=False)
 
-    # 3. X-tick labels logic for every other panel
-    for r in range(4):  # row index
-        for c in range(5):  # col index
+    for r in range(4):
+        for c in range(5):
             ax = axs2d[r, c]
-
-            # skip the special case (already handled)
             if r == 0 and c == 0:
                 continue
+            if r < 2:
+                ax.tick_params(axis='x', labelbottom=True)
+            if r < 3:
+                ax.set_xlabel('')
 
-            # keep tick *numbers* only on the two bottom rows (rows 2 & 3)
-            if r < 2:  # rows 0 and 1
-                ax.tick_params(axis='x', labelbottom=False)
+    fig.supxlabel('[X/Fe]', y=0.05, fontsize=18)
 
-            # drop x-axis labels everywhere except the bottom row
-            if r < 3:  # rows 0,1,2
-                ax.set_xlabel('')  # no per-subplot xlabel
-
-    # If you want one *global* x-label centred under the whole grid:
-    fig.supxlabel('[Fe/H]', y=0.05, fontsize=18)  # adjust text & y-offset as needed
-
-    # set fontsize for all axes
     for ax in axs:
         ax.tick_params(axis='both', which='major', labelsize=11)
 
-    #plt.savefig("../plots/training_distributions_6may2025_batch0-1.pdf", bbox_inches='tight', dpi=300)
+    # plt.savefig("../plots/training_distributions_6may2025_batch0-1.pdf", bbox_inches='tight', dpi=300)
     plt.show()
