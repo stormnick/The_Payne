@@ -104,7 +104,7 @@ if __name__ == '__main__':
 
     print(f"Teff min: {data_all['teff'].min()}, Teff max: {data_all['teff'].max()}")
 
-    fig, axs = plt.subplots(5, 4, figsize=(10, 11))
+    fig, axs = plt.subplots(7, 3, figsize=(6, 14))
     axs = axs.flatten()
 
     # --- shared colour mapping for ALL panels (persistent colouring) ---
@@ -124,7 +124,7 @@ if __name__ == '__main__':
     H = np.where(H < MIN_COUNT, np.nan, np.clip(H, None, MAX_COUNT))
     X, Y = np.meshgrid(xedges, yedges)
     im = axs[0].pcolormesh(X, Y, H.T, cmap=cmap, norm=norm, shading='auto', rasterized=True)
-    axs[0].set_xlabel('Teff [K]', fontsize=14)
+    axs[0].set_xlabel(r"T$_{\rm eff}$ [K]", fontsize=14)
     axs[0].set_ylabel('logg', fontsize=14)
     axs[0].set_xlim(teff_lo, teff_hi)
     axs[0].set_ylim(logg_lo, logg_hi)
@@ -141,9 +141,24 @@ if __name__ == '__main__':
     H = np.where(H < MIN_COUNT, np.nan, np.clip(H, None, MAX_COUNT))
     X, Y = np.meshgrid(xedges, yedges)
     im = axs[1].pcolormesh(X, Y, H.T, cmap=cmap, norm=norm, shading='auto', rasterized=True)
-    axs[1].text(0.07, 0.91, "logg", transform=axs[1].transAxes, ha='left', va='top', fontsize=16, color='white')
+    axs[1].text(0.07, 0.91, "logg", transform=axs[1].transAxes, ha='left', va='top', fontsize=16, color='k')
     axs[1].set_xlim(feh_lo, feh_hi)
     axs[1].set_ylim(logg_lo, logg_hi)
+    axs[1].invert_yaxis()
+
+    # -------- 2) [Fe/H]–logg (heatmap instead of scatter) -----------------
+    feh_lo, feh_hi = -5.1, 0.51
+    H, xedges, yedges = np.histogram2d(
+        data_all['feh'], data_all['teff'] / 1000,
+        bins=NBINS,
+        range=[[feh_lo, feh_hi], [teff_lo / 1000, teff_hi / 1000]]
+    )
+    H = np.where(H < MIN_COUNT, np.nan, np.clip(H, None, MAX_COUNT))
+    X, Y = np.meshgrid(xedges, yedges)
+    im = axs[2].pcolormesh(X, Y, H.T, cmap=cmap, norm=norm, shading='auto', rasterized=True)
+    axs[2].text(0.07, 0.91, r"T$_{\rm eff}$ [kK]", transform=axs[2].transAxes, ha='left', va='top', fontsize=16, color='k')
+    axs[2].set_xlim(feh_lo, feh_hi)
+    axs[2].set_ylim(teff_lo / 1000, teff_hi / 1000)
 
     # -------- 3) [Fe/H]–vmic (heatmap instead of scatter) -----------------
     vmic_lo = data_all['vmic'].min()
@@ -155,10 +170,10 @@ if __name__ == '__main__':
     )
     H = np.where(H < MIN_COUNT, np.nan, np.clip(H, None, MAX_COUNT))
     X, Y = np.meshgrid(xedges, yedges)
-    im = axs[2].pcolormesh(X, Y, H.T, cmap=cmap, norm=norm, shading='auto', rasterized=True)
-    axs[2].text(0.07, 0.91, "vmic [km/s]", transform=axs[2].transAxes, ha='left', va='top', fontsize=16, color='white')
-    axs[2].set_xlim(feh_lo, feh_hi)
-    axs[2].set_ylim(vmic_lo, vmic_hi)
+    im = axs[3].pcolormesh(X, Y, H.T, cmap=cmap, norm=norm, shading='auto', rasterized=True)
+    axs[3].text(0.07, 0.91, "vmic [km/s]", transform=axs[3].transAxes, ha='left', va='top', fontsize=15, color='k')
+    axs[3].set_xlim(feh_lo, feh_hi)
+    axs[3].set_ylim(vmic_lo, vmic_hi)
 
     # -------- Remaining element panels (unchanged, share same cmap/norm) ---
     for i, element in enumerate(data_all.columns[6:]):
@@ -173,35 +188,38 @@ if __name__ == '__main__':
         counts = np.where(counts < MIN_COUNT, np.nan, np.clip(counts, None, MAX_COUNT))
 
         X, Y = np.meshgrid(xedges, yedges)
-        im = axs[i + 3].pcolormesh(X, Y, counts.T, cmap=cmap, norm=norm, shading='auto', rasterized=True)
+        im = axs[i + 4].pcolormesh(X, Y, counts.T, cmap=cmap, norm=norm, shading='auto', rasterized=True)
 
         dist_width = np.max(data_all[element]) - np.min(data_all[element])
         text = 'A(Li)' if element == "A_Li" else f'[{element.replace("_Fe", "/Fe]")}'
-        axs[i + 3].text(0.07, 0.91, text, transform=axs[i + 3].transAxes,
-                        ha='left', va='top', fontsize=16, color='white')
+        axs[i + 4].text(0.07, 0.915, text, transform=axs[i + 4].transAxes,
+                        ha='left', va='top', fontsize=16, color='k')
 
         if dist_width <= 1.8:
-            axs[i + 3].yaxis.set_major_locator(MultipleLocator(0.5))
-            axs[i + 3].yaxis.set_minor_locator(MultipleLocator(0.1))
+            axs[i + 4].yaxis.set_major_locator(MultipleLocator(0.5))
+            axs[i + 4].yaxis.set_minor_locator(MultipleLocator(0.1))
         else:
-            axs[i + 3].yaxis.set_major_locator(MultipleLocator(1))
-            axs[i + 3].yaxis.set_minor_locator(MultipleLocator(0.2))
+            axs[i + 4].yaxis.set_major_locator(MultipleLocator(1))
+            axs[i + 4].yaxis.set_minor_locator(MultipleLocator(0.2))
 
-        axs[i + 3].set_xlim(feh_lo, feh_hi)
-        axs[i + 3].set_ylim(np.min(data_all[element]) - 0.06,
+        axs[i + 4].set_xlim(feh_lo, feh_hi)
+        axs[i + 4].set_ylim(np.min(data_all[element]) - 0.06,
                             np.max(data_all[element]) + 0.06)
 
     # --- single colourbar on the right for all subplots -------------------
     # make a new axis for the colourbar (left, bottom, width, height)
-    cax = fig.add_axes([0.91, 0.1, 0.03, 0.78])  # tweak 0.92 → move right/left
-    cbar = fig.colorbar(im, cax=cax)
-    cbar.set_label("Count per bin", fontsize=14)
+    # shrink figure width to make space above
+    cax = fig.add_axes([0.1, 0.91, 0.785, 0.02])  # [left, bottom, width, height]
+    cbar = fig.colorbar(im, cax=cax, orientation="horizontal")
 
-    # tick label font size
+    cbar.set_label("Count per bin", fontsize=14)
     cbar.ax.tick_params(labelsize=12)
 
+    cbar.ax.xaxis.set_ticks_position("top")
+    cbar.ax.xaxis.set_label_position("top")
+
     # --- layout/ticks tweaks (your existing logic) ------------------------
-    axs2d = axs.reshape(4, 5)
+    axs2d = axs.reshape(3, 7)
     fig.subplots_adjust(hspace=0.00, wspace=0.25)
 
     ax00 = axs2d[0, 0]
@@ -209,8 +227,8 @@ if __name__ == '__main__':
     ax00.xaxis.tick_top()
     ax00.tick_params(axis='x', labelbottom=False)
 
-    for r in range(4):
-        for c in range(5):
+    for r in range(3):
+        for c in range(7):
             ax = axs2d[r, c]
             if r == 0 and c == 0:
                 continue
@@ -219,11 +237,11 @@ if __name__ == '__main__':
             if r < 3:
                 ax.set_xlabel('')
 
-    fig.supxlabel('[Fe/H]', y=0.05, fontsize=18)
-    fig.supylabel('[X/Fe]', x=0.075, fontsize=18)
+    fig.supxlabel('[Fe/H]', y=0.075, fontsize=18)
+    fig.supylabel('[X/Fe]', x=0.035, fontsize=18)
 
     for ax in axs:
         ax.tick_params(axis='both', which='major', labelsize=10)
 
-    plt.savefig("../plots/training_distributions_6may2025_batch0-1.pdf", bbox_inches='tight', dpi=300)
+    #plt.savefig("../plots/training_distributions_6may2025_batch0-1.pdf", bbox_inches='tight', dpi=300)
     plt.show()

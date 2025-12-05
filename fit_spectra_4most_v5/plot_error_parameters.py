@@ -8,7 +8,7 @@ import fit_systematic_error
 import matplotlib.ticker as ticker
 
 matplotlib.use("MacOSX")
-# plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyle")
+plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyle")
 
 # Created by storm at 29.08.25
 
@@ -44,17 +44,35 @@ Y_Fe_error
 
     plt.figure(figsize=(6.5, 4))
     plt.scatter(labels, errors, color='k', s=60, zorder=5)
-    #plt.xlabel("Estimated Systematic Error (dex or K for Teff)")
-    #plt.title("Estimated Systematic Errors in Stellar Parameters and Abundances")
-    #plt.grid(axis='x', linestyle='--', alpha=0.7)
-    plt.ylabel("Estimated Systematic Error")
-    plt.xlabel("Label")
-    plt.ylim(0.03, 0.26)
-    # change yticks to 0.03, 0.05, 0.1, 0.2
+    plt.ylabel("Estimated Systematic Error", fontsize=15)
+    plt.xlabel("Label", fontsize=15)
+    plt.ylim(0.03, 0.27)
     plt.yscale('log')
-    # REMOVE OTHER TICKS BEFOREHAND
-    plt.yticks([0.03, 0.05, 0.1, 0.2], ["0.03", "0.05", "0.1", "0.2"])
-    plt.minorticks_off()  # disables all minor ticks
+
+    # custom yticks
+    yticks = [0.03, 0.05, 0.1, 0.2]
+    plt.yticks(yticks, [str(y) for y in yticks], fontsize=15)
+    plt.minorticks_off()
+
+    # enlarge x tick labels and alternate positions
+    xticks = plt.xticks()[0]  # tick positions
+    xlabels = [tick.get_text() for tick in plt.gca().get_xticklabels()]
+
+    plt.gca().set_xticks(xticks)
+    new_labels = []
+    for i, label in enumerate(xlabels):
+        new_labels.append(label)
+
+    # redraw manually with alternating vertical alignment
+    for i, label in enumerate(plt.gca().get_xticklabels()):
+        label.set_fontsize(15)
+        if i % 2 == 0:
+            label.set_verticalalignment('top')
+            label.set_y(-0.09)  # push down a bit
+        else:
+            label.set_verticalalignment('bottom')
+            label.set_y(-0.07)  # push further down
+
     plt.tight_layout()
     plt.savefig("../plots/systematic_errors.pdf", bbox_inches='tight')
     plt.show()

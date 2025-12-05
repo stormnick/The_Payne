@@ -59,7 +59,7 @@ if __name__ == '__main__':
     xerr_plot = np.asarray(data["feh_std"])[idx]  # error in feh
     yerr_plot = np.asarray(data[f"A_Li_std"])[idx]  # error
 
-    fontsize = 14
+    fontsize = 16
 
     # 2 subplots: A(Li) and Li/Fe
     fig, axs = plt.subplots(1, 1, figsize=(6.5, 6), sharex=True)
@@ -82,8 +82,8 @@ if __name__ == '__main__':
                     labelspacing=0.15)
 
     # plot sun as a star symbol
-    axs.scatter(sun_xfe, sun_ali, marker='*', s=300, c='orange', edgecolor='k', label='Sun', zorder=5)
-    axs.text(sun_xfe + 0.22, sun_ali, 'Sun', fontsize=12, verticalalignment='center', horizontalalignment='center', color='darkorange')
+    axs.scatter(sun_xfe, sun_ali, marker='*', s=300, c='red', edgecolor='k', label='Sun', zorder=5)
+    axs.text(sun_xfe + 0.22, sun_ali, 'Sun', fontsize=14, verticalalignment='center', horizontalalignment='center', color='red')
 
     # change all fontsizes
     axs.tick_params(axis='both', which='major', labelsize=fontsize)

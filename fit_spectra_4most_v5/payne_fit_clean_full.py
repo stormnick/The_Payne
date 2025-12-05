@@ -749,8 +749,6 @@ def fit_one_xfe_element(element_to_fit: str, stellar_parameters: StellarParamete
                     ew_lines.append(ew_line - ew_line_no_element)
                 except ValueError:
                     pass
-            print(fitted_value)
-            print(ew_lines)
             avg_ew = np.mean(ew_lines)
             if avg_ew < 1 and np.max(ew_lines) < 2:
                 print(f"Equivalent width of {element_to_fit} is too low: {avg_ew:.2f}, max={np.max(ew_lines):.2f}")

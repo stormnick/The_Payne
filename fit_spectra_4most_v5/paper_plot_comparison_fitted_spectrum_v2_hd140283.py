@@ -78,7 +78,7 @@ if __name__ == '__main__':
         gridspec_kw={'height_ratios': [3, 1, 3], 'hspace': 0.26, 'wspace': 0.12}
     )
 
-    fig.suptitle(r'HD 140283: T$_{\rm eff}$ = 5746 K, logg = 3.59 dex, [Fe/H] = -2.47 dex', fontsize=16, y=0.95)
+    fig.suptitle(r'HD 140283 (UVES): T$_{\rm eff}$ = 5746 K, logg = 3.59 dex, [Fe/H] = -2.47 dex', fontsize=16, y=0.95)
 
     # -- Plot main broken-axis panels --
     for i, ax_key in enumerate(['m1', 'm2', 'm3']):

@@ -14,11 +14,11 @@ plt.style.use("/Users/storm/PycharmProjects/bensby_3d_nlte/Bergemann2020.mplstyl
 if __name__ == '__main__':
     # Load spectra
     wavelength_fitted, flux_fitted = np.loadtxt(
-        "fitted_spectrum_HD140283_UVES_4most_v2.txt", usecols=(0, 1), unpack=True, dtype=float
+        "fitted_spectrum_HD84937_UVES_4most_v2.txt", usecols=(0, 1), unpack=True, dtype=float
     )
-    wavelength_fitted, flux_fitted = np.loadtxt(
-        "fitted_spectrum_.txt", usecols=(0, 1), unpack=True, dtype=float
-    )
+    #wavelength_fitted, flux_fitted = np.loadtxt(
+    #    "fitted_spectrum_.txt", usecols=(0, 1), unpack=True, dtype=float
+    #)
     wavelength_obs, flux_obs = np.loadtxt(
         "/Users/storm/PhD_2022-2025/Spectra/some_lowfeh_benchmark/norm_20k_degraded/HD84937_UVES_4most.txt",
         usecols=(0, 1), unpack=True, dtype=float
@@ -77,7 +77,7 @@ if __name__ == '__main__':
         gridspec_kw={'height_ratios': [3, 1, 3], 'hspace': 0.26, 'wspace': 0.12}
     )
 
-    fig.suptitle(r'HD 84937: T$_{\rm eff}$ = 6182 K, logg = 3.53 dex, [Fe/H] = -2.22 dex', fontsize=16, y=0.95)
+    fig.suptitle(r'HD 84937 (UVES): T$_{\rm eff}$ = 6182 K, logg = 3.53 dex, [Fe/H] = -2.22 dex', fontsize=16, y=0.95)
 
     # -- Plot main broken-axis panels --
     for i, ax_key in enumerate(['m1', 'm2', 'm3']):

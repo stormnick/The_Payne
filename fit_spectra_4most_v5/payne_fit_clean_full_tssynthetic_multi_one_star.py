@@ -42,15 +42,6 @@ def fit_one_spectrum(file, stellar_rv, folder, payne_parameters, snr=100):
 
     stellar_parameters = fit_stellar_parameters(stellar_parameters, payne_parameters, wavelength_obs, flux_obs,
                                                 silent=True, sigma_flux=1/snr)
-    print(stellar_parameters)
-
-    stellar_parameters.teff.value = 4.393
-    stellar_parameters.logg.value = 2.22
-    stellar_parameters.feh.value = 0.06
-    stellar_parameters.vmic.value = 1.45
-    stellar_parameters.vsini.value = 2.84
-    stellar_parameters.abundances["Ca_Fe"].value = 0.12
-    stellar_parameters.abundances["Mg_Fe"].value = -0.074
 
     labels = payne_parameters.labels
 
@@ -116,8 +107,8 @@ if __name__ == '__main__':
     # get all filenames in the folder
     folder = "/Users/storm/PycharmProjects/payne/observed_spectra_to_test/benchmark/"
     folder = "/Users/storm/PhD_2025/02.22 Payne/real_spectra_to_fit/converted/"
-    folder = "/Users/storm/Downloads/"
-    #folder = "/Users/storm/PhD_2022-2025/Spectra/some_lowfeh_benchmark/norm_20k_degraded/"
+    #folder = "/Users/storm/Downloads/"
+    folder = "/Users/storm/PhD_2022-2025/Spectra/some_lowfeh_benchmark/norm_20k_degraded/"
     files = os.listdir(folder)
 
     # remove ".DS_Store"
@@ -143,7 +134,7 @@ if __name__ == '__main__':
     file_to_fit = "hd140283_UVES_4most.txt"
     file_to_fit = "hd122563_UVES_4most.txt"
     file_to_fit = "hd84937_UVES_4most.txt"
-    file_to_fit = "NARVAL_muLeo"
+    #file_to_fit = "NARVAL_muLeo"
 
     for file in files:
         if file_to_fit in file:
